@@ -1,0 +1,31 @@
+name: Release
+
+# 推送 v2.* tag 时发布：先测试，再构建 5 个平台的 dsync 二进制并附带 checksums.txt。
+# 资产名 dsync_<os>_<arch>[.exe] 与 internal/release.AssetName、install.sh 约定一致。
+on:
+  push:
+    tags: ['v2.*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: 测试
+        run: go test -count=1 ./...
+      - name: 构建
+        run: bash scripts/build-release.sh "$GITHUB_REF_NAME" dist
+      - name: 创建 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags=""
+          case "$GITHUB_REF_NAME" in *-*) flags="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" dist/* --title "dsync $GITHUB_REF_NAME" --generate-notes $flags

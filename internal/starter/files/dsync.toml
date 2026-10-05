@@ -1,0 +1,24 @@
+# dsync 共享清单（入库，多台机器共用）。本机专属设置（geo、代理、git 身份、机器标签）在 ~/.config/dsync/local.toml。
+version = 1
+
+[remote]
+# url = "https://github.com/<you>/dotfiles.git"
+# mirrors = ["https://gitee.com/<you>/dotfiles.git"]   # dsync save 时一并推送
+
+[packages]
+apt = ["build-essential", "curl", "wget", "git", "zsh", "unzip", "ca-certificates", "ripgrep", "socat"]
+brew = ["ripgrep", "fd"]
+
+[shell]
+default = "zsh"
+ohmyzsh_plugins = ["zsh-users/zsh-autosuggestions", "zsh-users/zsh-syntax-highlighting"]
+
+[provision]
+enable = ["apt", "wsl-ssh-agent", "homebrew", "ohmyzsh", "chsh", "docker-check"]
+
+[secrets]
+# age_recipients = ["age1..."]   # 设置后 dsync 为 chezmoi 启用 age 加密
+
+[data]
+# 自定义模板数据，模板中以 {{ .editor }} 引用
+editor = "nvim"

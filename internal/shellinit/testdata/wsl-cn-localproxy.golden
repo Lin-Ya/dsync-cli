@@ -1,0 +1,35 @@
+# dsync shell-init (zsh, geo=cn, WSL2/ubuntu 24.04/amd64)
+export DSYNC_GEO='cn'
+export DSYNC_GEO_SOURCE='shell-init'
+export WSL_HOST_IP="$(ip route show default 2>/dev/null | awk '{print $3; exit}')"
+export http_proxy="http://${WSL_HOST_IP}:7890"
+export HTTP_PROXY="http://${WSL_HOST_IP}:7890"
+export https_proxy="http://${WSL_HOST_IP}:7890"
+export HTTPS_PROXY="http://${WSL_HOST_IP}:7890"
+export no_proxy="localhost,127.0.0.1"
+export NO_PROXY="localhost,127.0.0.1"
+export MISE_NODE_MIRROR_URL='https://npmmirror.com/mirrors/node/'
+export PIP_INDEX_URL='https://pypi.tuna.tsinghua.edu.cn/simple'
+export UV_DEFAULT_INDEX='https://pypi.tuna.tsinghua.edu.cn/simple'
+export UV_INDEX_URL='https://pypi.tuna.tsinghua.edu.cn/simple'
+export NPM_CONFIG_REGISTRY='https://registry.npmmirror.com'
+export RUSTUP_DIST_SERVER='https://rsproxy.cn'
+export RUSTUP_UPDATE_ROOT='https://rsproxy.cn/rustup'
+export MISE_PYENV_REPO='https://gitee.com/mirrors/pyenv.git'
+export HOMEBREW_API_DOMAIN='https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles/api'
+export HOMEBREW_BOTTLE_DOMAIN='https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles'
+export HOMEBREW_BREW_GIT_REMOTE='https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/brew.git'
+export HOMEBREW_CORE_GIT_REMOTE='https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/homebrew-core.git'
+export SSH_AUTH_SOCK="$HOME/.ssh/agent.sock"
+if command -v socat >/dev/null 2>&1 && [ -x "$HOME/.local/bin/npiperelay.exe" ]; then
+  if [ -S "$SSH_AUTH_SOCK" ] && command -v ss >/dev/null 2>&1 && ss -xl 2>/dev/null | grep -q "agent.sock"; then
+    :
+  else
+    mkdir -p "$HOME/.ssh"
+    rm -f "$SSH_AUTH_SOCK"
+    echo "[$(date '+%F %T')] dsync: 启动 socat（残留检测重建）..." >>"$HOME/.ssh/agent-start.log"
+    nohup socat UNIX-LISTEN:"$SSH_AUTH_SOCK",fork \
+      EXEC:"$HOME/.local/bin/npiperelay.exe -ei -s //./pipe/openssh-ssh-agent",nofork \
+      >>"$HOME/.ssh/agent-start.log" 2>&1 &
+  fi
+fi

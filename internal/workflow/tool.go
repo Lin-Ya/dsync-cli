@@ -1,0 +1,203 @@
+package workflow
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/Lin-Ya/dsync-cli/internal/gitrepo"
+)
+
+// ToolAddOptions 是 `dsync tool add` 的参数。
+type ToolAddOptions struct {
+	Specs []string
+	Push  bool
+}
+
+// ToolAdd 新增/升级 mise 全局工具并同步回仓库（取代 v1 dsync add）。
+//
+// 与 v1 的区别：先改源、再部署。由 mise 直接编辑仓库中的源文件（保留注释），
+// 然后 chezmoi apply 部署到 ~/.config/mise/config.toml，不再把部署产物 cp 回模板。
+// 源文件是 .tmpl 时（mise 不认该扩展名），在同名临时副本上编辑后写回。
+func (e Env) ToolAdd(ctx context.Context, o ToolAddOptions) error {
+	if len(o.Specs) == 0 {
+		return errors.New("缺少工具 spec（例如 node@22.11.0 或 npm:typescript@5.6.2）")
+	}
+	c, err := e.Load()
+	if err != nil {
+		return err
+	}
+	if err := e.require("mise", "chezmoi", "git"); err != nil {
+		return err
+	}
+	repo, err := e.LocateRepo(ctx, c)
+	if err != nil {
+		return err
+	}
+	srcDir := filepath.Join(repo.Source, "dot_config", "mise")
+	src, err := miseConfigSource(srcDir)
+	if err != nil {
+		return err
+	}
+	lockSrc, err := miseLockSource(srcDir)
+	if err != nil {
+		return err
+	}
+	git := gitrepo.Repo{R: e.Runner, Dir: repo.Root}
+	specs := strings.Join(o.Specs, " ")
+
+	e.logf("[1/5] 同步仓库（%s）", repo.Root)
+	if err := e.pullIfTracking(ctx, git); err != nil {
+		return err
+	}
+
+	e.logf("[2/5] mise use %s（编辑源文件 %s）", specs, rel(repo.Root, src))
+	if err := e.miseUseOnSource(ctx, src, o.Specs); err != nil {
+		return err
+	}
+
+	target := filepath.Join(c.Paths.Home, ".config", "mise", "config.toml")
+	e.logf("[3/5] chezmoi apply %s", target)
+	if err := e.chezmoi(repo.Source).Apply(ctx, target); err != nil {
+		return err
+	}
+
+	e.logf("[4/5] mise lock --global 并写回 %s", rel(repo.Root, lockSrc))
+	if err := e.mise().LockGlobal(ctx); err != nil {
+		return err
+	}
+	if err := e.copyFile(filepath.Join(c.Paths.Home, ".config", "mise", "mise.lock"), lockSrc, 0o600); err != nil {
+		return fmt.Errorf("写回 lockfile 失败: %w", err)
+	}
+
+	e.logf("[5/5] 提交")
+	return e.commitAndPush(ctx, git, []string{rel(repo.Root, srcDir)}, "chore(mise): add "+specs, o.Push)
+}
+
+// miseConfigSource 返回 mise 全局配置的源文件；拒绝重复条目与含模板变量的模板。
+func miseConfigSource(dir string) (string, error) {
+	plain := filepath.Join(dir, "config.toml")
+	tmpl := plain + ".tmpl"
+	hasPlain, hasTmpl := fileExists(plain), fileExists(tmpl)
+	switch {
+	case hasPlain && hasTmpl:
+		return "", fmt.Errorf("源目录存在重复条目 %s 与 %s（同一目标两份源），请删除其一", plain, tmpl)
+	case hasPlain:
+		return plain, nil
+	case hasTmpl:
+		b, err := os.ReadFile(tmpl)
+		if err != nil {
+			return "", err
+		}
+		if strings.Contains(string(b), "{{") {
+			return "", fmt.Errorf("%s 含模板变量，无法自动编辑（会固化渲染结果）；请手工编辑后 dsync save", tmpl)
+		}
+		return tmpl, nil
+	}
+	return "", fmt.Errorf("找不到 mise 全局配置源文件（%s 或 .tmpl）", plain)
+}
+
+// miseLockSource 返回 lockfile 的源路径（沿用已有的 private_ / 普通命名，均无则新建 private_）。
+func miseLockSource(dir string) (string, error) {
+	priv := filepath.Join(dir, "private_mise.lock")
+	plain := filepath.Join(dir, "mise.lock")
+	switch {
+	case fileExists(priv) && fileExists(plain):
+		return "", fmt.Errorf("源目录存在重复 lockfile 条目 %s 与 %s，请删除其一", priv, plain)
+	case fileExists(plain):
+		return plain, nil
+	}
+	return priv, nil
+}
+
+// miseUseOnSource 让 mise 编辑源文件；.tmpl 源在临时副本 config.toml 上编辑后写回。
+func (e Env) miseUseOnSource(ctx context.Context, src string, specs []string) error {
+	if !strings.HasSuffix(src, ".tmpl") {
+		return e.mise().Use(ctx, src, specs...)
+	}
+	tmp, err := os.MkdirTemp("", "dsync-mise-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmp)
+	work := filepath.Join(tmp, "config.toml")
+	b, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(work, b, 0o644); err != nil {
+		return err
+	}
+	if err := e.mise().Use(ctx, work, specs...); err != nil {
+		return err
+	}
+	edited, err := os.ReadFile(work)
+	if err != nil {
+		return err
+	}
+	return e.writeFile(src, edited, 0o644)
+}
+
+// pullIfTracking 有上游时 rebase 拉取（失败即中止，避免在冲突状态上继续提交）；无上游则跳过。
+func (e Env) pullIfTracking(ctx context.Context, git gitrepo.Repo) error {
+	st, err := git.Status(ctx)
+	if err != nil {
+		return err
+	}
+	if st.Upstream == "" {
+		e.logf("  （当前分支无上游，跳过拉取）")
+		return nil
+	}
+	if err := git.Pull(ctx); err != nil {
+		return fmt.Errorf("拉取失败，请先解决后重试: %w", err)
+	}
+	return nil
+}
+
+// commitAndPush 暂存 paths（空 = 全部）并提交；无改动时跳过。push 为 true 时推送到上游。
+func (e Env) commitAndPush(ctx context.Context, git gitrepo.Repo, paths []string, msg string, push bool) error {
+	if err := git.Add(ctx, paths...); err != nil {
+		return err
+	}
+	staged, err := git.Staged(ctx)
+	if err != nil {
+		return err
+	}
+	if len(staged) == 0 && !e.DryRun {
+		e.logf("  （没有需要提交的改动）")
+	} else {
+		if err := git.Commit(ctx, msg); err != nil {
+			return fmt.Errorf("提交失败（git 身份未配置？）: %w", err)
+		}
+		if !e.DryRun {
+			e.logf("  已提交: %s", msg)
+		}
+	}
+	if !push {
+		e.logf(">>> 未推送。推送: dsync save（或 git -C %s push）", git.Dir)
+		return nil
+	}
+	if err := git.Push(ctx, ""); err != nil {
+		return fmt.Errorf("推送失败（认证/网络），稍后执行 dsync save 重试: %w", err)
+	}
+	e.logf(">>> 已推送。其它机器执行 dsync sync 即可同步")
+	return nil
+}
+
+// rel 返回 p 相对 root 的路径。两边先解析符号链接：chezmoi source-path 可能返回
+// 未解析的 ~/.local/share/chezmoi/…，而仓库根是解析后的真实路径。
+func rel(root, p string) string {
+	if r, err := filepath.EvalSymlinks(root); err == nil {
+		root = r
+	}
+	if r, err := filepath.EvalSymlinks(p); err == nil {
+		p = r
+	}
+	if r, err := filepath.Rel(root, p); err == nil {
+		return r
+	}
+	return p
+}

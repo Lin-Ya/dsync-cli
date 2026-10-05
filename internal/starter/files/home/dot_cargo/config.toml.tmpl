@@ -1,0 +1,8 @@
+# ~/.cargo/config.toml — 由 dsync 按 geo 渲染
+{{- if .dsync.mirrors.cargo }}
+[source.crates-io]
+replace-with = "dsync-mirror"
+
+[source.dsync-mirror]
+registry = "sparse+{{ .dsync.mirrors.cargo }}/index/"
+{{- end }}

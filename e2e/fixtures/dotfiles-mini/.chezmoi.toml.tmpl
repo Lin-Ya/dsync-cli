@@ -1,0 +1,4 @@
+{{- /* e2e 最小 dotfiles 仓库（v1 布局）：geo 由 dsync init 以 DSYNC_GEO 传入 */ -}}
+{{- $geo := default "cn" (env "DSYNC_GEO") -}}
+[data]
+geo = "{{ $geo }}"

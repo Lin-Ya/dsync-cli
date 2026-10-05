@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # L1 单元 + shell-init golden / 语法 / v1 parity；真实 git 契约测试
+  # ---------------------------------------------------------------------------
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: 安装 zsh（parity 测试用 zsh source v1 .zshenv）
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq zsh
+      - name: 安装 chezmoi（契约测试：geo set 用真实 chezmoi 渲染）
+        run: |
+          BINDIR="$HOME/.local/bin" sh -c "$(curl -fsLS get.chezmoi.io)"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: gofmt
+        run: test -z "$(gofmt -l . | tee /dev/stderr)"
+      - name: go vet
+        run: go vet ./...
+      - name: go test
+        run: go test -race -count=1 -coverprofile=coverage.out ./...
+      - name: 覆盖率
+        run: go tool cover -func=coverage.out | tail -1
+
+  # ---------------------------------------------------------------------------
+  # Windows：host 包（宿主步骤）与 install.ps1（真实 powershell.exe + 模拟 GitHub API）
+  # 其余包依赖 sh / zsh 等 Unix 工具，不在 Windows 上运行
+  # ---------------------------------------------------------------------------
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: go test（host / install.ps1）
+        run: go test -count=1 -v ./internal/host/ ./install/
+
+  # ---------------------------------------------------------------------------
+  # shellcheck 严格模式（style 级别起即失败；不再 || true）
+  # ---------------------------------------------------------------------------
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: shellcheck -S style install/install.sh scripts/*.sh e2e/*.sh
+
+  # ---------------------------------------------------------------------------
+  # 交叉编译：Windows 端 M5 才有业务逻辑，此阶段先保证可编译
+  # ---------------------------------------------------------------------------
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: 交叉编译 darwin/linux/windows
+        run: |
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
+            GOOS=${target%/*} GOARCH=${target#*/} CGO_ENABLED=0 go build -o /dev/null ./cmd/dsync
+            echo "OK $target"
+          done
+
+  # ---------------------------------------------------------------------------
+  # E2E：ubuntu:24.04 容器内真实执行（cn 覆盖 apt 换源路径）
+  #   provision —— root / 普通用户+sudo 各跑两次，第二次计划中不得有待办项
+  #   init      —— 真实下载校验 mise/chezmoi、克隆、apply、provision、mise install，
+  #                跑两次后 status 必须无漂移、无缺失工具、无待办
+  # ---------------------------------------------------------------------------
+  e2e:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        geo: [cn, official]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: provision E2E（geo=${{ matrix.geo }}）
+        env:
+          DSYNC_GEO: ${{ matrix.geo }}
+        run: bash e2e/provision.sh root sudo
+      - name: init E2E（geo=${{ matrix.geo }}）
+        env:
+          DSYNC_GEO: ${{ matrix.geo }}
+        run: bash e2e/init.sh

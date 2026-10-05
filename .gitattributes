@@ -1,0 +1,3 @@
+# 源码与测试快照一律 LF：golden / v1 快照逐字节比对在 Windows 检出后仍成立
+* text=auto eol=lf
+*.png binary

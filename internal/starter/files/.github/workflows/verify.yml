@@ -1,0 +1,22 @@
+name: verify
+
+# 渲染全部模板（linux / darwin × cn / official）并校验 dsync.toml。
+# dsync-cli 是私有仓库：需在本仓库 Settings → Secrets 中添加 DSYNC_CLI_TOKEN（对 Lin-Ya/dsync-cli 有 Contents 读权限）。
+on: [push, pull_request, workflow_dispatch]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 安装 dsync
+        env:
+          GITHUB_TOKEN: ${{ secrets.DSYNC_CLI_TOKEN }}
+        run: |
+          curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github.raw" \
+            "https://api.github.com/repos/Lin-Ya/dsync-cli/contents/install/install.sh" | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: 安装 chezmoi
+        run: BINDIR="$HOME/.local/bin" sh -c "$(curl -fsLS get.chezmoi.io)"
+      - name: dsync verify
+        run: dsync verify --source .

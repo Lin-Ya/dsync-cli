@@ -1,0 +1,3 @@
+# mise 全局工具清单 — 由 dsync 管理：dsync tool add <tool>@<version> 会编辑本文件（注释保留）
+[tools]
+fzf = "0.57.0"

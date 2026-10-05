@@ -1,0 +1,17 @@
+# ~/.gitconfig — 由 dsync（chezmoi）管理；身份来自本机 ~/.config/dsync/local.toml 的 [user]
+[user]
+{{- if .dsync.user.name }}
+	name = {{ .dsync.user.name }}
+{{- end }}
+{{- if .dsync.user.email }}
+	email = {{ .dsync.user.email }}
+{{- end }}
+[init]
+	defaultBranch = main
+[core]
+	editor = {{ .editor }}
+	autocrlf = input
+[pull]
+	rebase = true
+[push]
+	autoSetupRemote = true
