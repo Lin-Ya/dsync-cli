@@ -170,7 +170,7 @@ func (e Env) commitAndPush(ctx context.Context, git gitrepo.Repo, paths []string
 		e.logf("  （没有需要提交的改动）")
 	} else {
 		if err := git.Commit(ctx, msg); err != nil {
-			return fmt.Errorf("提交失败（git 身份未配置？）: %w", err)
+			return fmt.Errorf("提交失败（git 身份未配置？在 ~/.config/dsync/local.toml 的 [user] 填写 name / email 后 dsync sync，或 git config --global user.name / user.email）: %w", err)
 		}
 		if !e.DryRun {
 			e.logf("  已提交: %s", msg)
@@ -181,7 +181,7 @@ func (e Env) commitAndPush(ctx context.Context, git gitrepo.Repo, paths []string
 		return nil
 	}
 	if err := git.Push(ctx, ""); err != nil {
-		return fmt.Errorf("推送失败（认证/网络），稍后执行 dsync save 重试: %w", err)
+		return fmt.Errorf("推送失败（未配置远端 / 认证 / 网络），处理后执行 dsync save 重试: %w", err)
 	}
 	e.logf(">>> 已推送。其它机器执行 dsync sync 即可同步")
 	return nil

@@ -145,11 +145,12 @@ func (s StatusReport) WriteText(w io.Writer) {
 		for _, d := range s.Drift {
 			fmt.Fprintf(w, "          %s%s %s\n", or(d.LastWrite, " "), or(d.Apply, " "), d.Path)
 		}
+		fmt.Fprintln(w, "          → 首列 = 本机改动，次列 = 部署将做的变更。保留本机改动: dsync capture <文件>；按仓库部署: dsync sync")
 	}
 	if len(s.Missing) == 0 {
 		fmt.Fprintf(w, "工具    %d 个，全部已安装\n", s.Tools)
 	} else {
-		fmt.Fprintf(w, "工具    %d 个，缺失 %d 个: %s\n", s.Tools, len(s.Missing), strings.Join(s.Missing, " "))
+		fmt.Fprintf(w, "工具    %d 个，缺失 %d 个: %s（dsync sync）\n", s.Tools, len(s.Missing), strings.Join(s.Missing, " "))
 	}
 	if len(s.Provision) > 0 {
 		fmt.Fprintf(w, "系统    待执行: %s（dsync provision）\n", strings.Join(s.Provision, " "))

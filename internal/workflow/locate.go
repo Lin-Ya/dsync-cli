@@ -28,7 +28,8 @@ type RepoInfo struct {
 }
 
 // ErrRepoNotFound 表示找不到 dotfiles 仓库。
-var ErrRepoNotFound = errors.New("找不到 dotfiles 仓库（已尝试: local.toml repo.path、$CHEZMOI_SOURCE_DIR、chezmoi source-path、~/dsync、~/dotfiles）")
+var ErrRepoNotFound = errors.New("找不到 dotfiles 仓库（已尝试: local.toml repo.path、$CHEZMOI_SOURCE_DIR、chezmoi source-path、~/dsync、~/dotfiles）\n" +
+	"  首次使用请先运行: dsync init <仓库地址>（已有本地仓库: dsync init --source <目录>；还没有仓库: dsync init --create）")
 
 // LocateRepo 按优先级定位 dotfiles 仓库：
 // local.toml repo.path > $CHEZMOI_SOURCE_DIR > `chezmoi source-path` > v1 常见位置。

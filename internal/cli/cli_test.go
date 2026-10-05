@@ -39,6 +39,7 @@ func TestExitCodes(t *testing.T) {
 		out  string
 	}{
 		{[]string{"version"}, 0, "dsync dev"},
+		{[]string{"--version"}, 0, "dsync dev"},
 		{[]string{"shell-init", "zsh"}, 0, "export DSYNC_GEO='cn'"},
 		{[]string{"shell-init", "fish"}, 2, ""},
 		{[]string{"shell-init"}, 2, ""},
@@ -70,5 +71,23 @@ func TestExitCodes(t *testing.T) {
 				t.Errorf("stdout 缺少 %q:\n%s", c.out, out)
 			}
 		})
+	}
+}
+
+// 参数个数不对时附上用法；根帮助按场景分组且每个命令都有归属。
+func TestUsageHints(t *testing.T) {
+	if _, _, errOut := run(t, "geo", "set"); !strings.Contains(errOut, "用法: dsync geo set <cn|official>") {
+		t.Errorf("缺少用法提示:\n%s", errOut)
+	}
+	_, out, _ := run(t, "--help")
+	for _, want := range []string{"部署与更新:", "日常同步", "查看与诊断"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("帮助缺少分组 %q:\n%s", want, out)
+		}
+	}
+	for _, c := range New(workflow.Env{}).Commands() {
+		if c.GroupID == "" {
+			t.Errorf("命令 %s 未归入任何分组", c.Name())
+		}
 	}
 }

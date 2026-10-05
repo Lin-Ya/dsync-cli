@@ -84,6 +84,9 @@ func (e Env) writeFile(path string, data []byte, perm os.FileMode) error {
 
 // copyFile 复制文件内容（保留目标已有权限；目标不存在时用 perm）。
 func (e Env) copyFile(src, dst string, perm os.FileMode) error {
+	if e.DryRun { // 先于读取：src 可能由尚未执行的命令生成（如首次 mise lock）
+		return e.writeFile(dst, nil, perm)
+	}
 	b, err := os.ReadFile(src)
 	if err != nil {
 		return err

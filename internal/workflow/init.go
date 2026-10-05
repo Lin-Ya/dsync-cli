@@ -203,7 +203,7 @@ func (e Env) initRepo(ctx context.Context, c Context, o InitOptions) (RepoInfo, 
 		}
 		// 直连终端：私有仓库需要输入凭据（用户名 + Token）时可交互
 		if _, err := e.Runner.Run(ctx, exec.Cmd{Name: "git", Args: []string{"clone", o.Repo, dest}, Interactive: true}); err != nil {
-			return RepoInfo{}, fmt.Errorf("克隆失败（私有仓库请先配置凭据，见测试指引）: %w", err)
+			return RepoInfo{}, fmt.Errorf("克隆失败（私有仓库需要凭据：HTTPS 地址输入用户名 + Token，或改用已配置密钥的 SSH 地址）: %w", err)
 		}
 		if e.DryRun {
 			return RepoInfo{Root: dest, Source: dest, Layout: LayoutV1, Via: "clone"}, nil

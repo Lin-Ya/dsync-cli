@@ -37,7 +37,10 @@ func New(env workflow.Env) *cobra.Command {
 		Short:         "跨设备开发环境同步（编排 mise + chezmoi + git）",
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		Version:       Version,
 	}
+	root.SetVersionTemplate("dsync {{.Version}}\n")
+	root.Flags().BoolP("version", "v", false, "显示版本")
 	root.PersistentFlags().BoolVar(&g.json, "json", false, "以 JSON 输出（供脚本 / CI 使用）")
 	root.PersistentFlags().BoolVar(&g.dryRun, "dry-run", false, "只打印将执行的写操作，不实际执行")
 	root.SetOut(env.Out)
@@ -66,7 +69,7 @@ func New(env workflow.Env) *cobra.Command {
 			Use:       "shell-init <zsh|bash>",
 			Short:     "输出 shell 初始化脚本：eval \"$(dsync shell-init zsh)\"",
 			Long:      "输出镜像环境变量、代理与 WSL ssh-agent 桥接脚本，供 ~/.zshenv 中 eval 使用。\n取代 v1 ~/.zshenv 中 source mirrors.sh / proxy.env 的逻辑。",
-			Args:      cobra.ExactArgs(1),
+			Args:      usageArgs(cobra.ExactArgs(1)),
 			ValidArgs: shellinit.Shells,
 			RunE: func(_ *cobra.Command, args []string) error {
 				return envFor().ShellInit(args[0])
@@ -110,7 +113,32 @@ func New(env workflow.Env) *cobra.Command {
 		},
 	)
 	root.AddCommand(writeCommands(envFor)...)
+
+	// 帮助中按使用场景分组
+	root.AddGroup(
+		&cobra.Group{ID: "setup", Title: "部署与更新:"},
+		&cobra.Group{ID: "daily", Title: "日常同步:"},
+		&cobra.Group{ID: "inspect", Title: "查看与诊断（只读）:"},
+	)
+	groups := map[string]string{
+		"init": "setup", "host": "setup", "self-update": "setup",
+		"sync": "daily", "save": "daily", "capture": "daily", "tool": "daily", "geo": "daily", "provision": "daily",
+		"status": "inspect", "doctor": "inspect", "verify": "inspect", "shell-init": "inspect", "version": "inspect",
+	}
+	for _, c := range root.Commands() {
+		c.GroupID = groups[c.Name()]
+	}
 	return root
+}
+
+// usageArgs 包装参数校验：出错时附上用法（SilenceUsage 下 cobra 不会打印）。
+func usageArgs(v cobra.PositionalArgs) cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		if err := v(cmd, args); err != nil {
+			return fmt.Errorf("参数不正确（%v）\n用法: %s\n详见: %s --help", err, cmd.UseLine(), cmd.CommandPath())
+		}
+		return nil
+	}
 }
 
 func jsonOut(cmd *cobra.Command) bool {
@@ -124,7 +152,7 @@ func writeCommands(envFor func() workflow.Env) []*cobra.Command {
 	geo.AddCommand(&cobra.Command{
 		Use:       "set <cn|official>",
 		Short:     "切换镜像源并重新渲染相关配置（.npmrc / cargo / docker 等）",
-		Args:      cobra.ExactArgs(1),
+		Args:      usageArgs(cobra.ExactArgs(1)),
 		ValidArgs: []string{"cn", "official"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return envFor().GeoSet(cmd.Context(), args[0])
@@ -137,7 +165,7 @@ func writeCommands(envFor func() workflow.Env) []*cobra.Command {
 		Use:     "add <tool>[@<version>]...",
 		Short:   "新增/升级工具：编辑仓库源 → 部署 → 安装 → lock → 提交",
 		Example: "  dsync tool add node@22.11.0\n  dsync tool add npm:typescript@5.6.2 --push",
-		Args:    cobra.MinimumNArgs(1),
+		Args:    usageArgs(cobra.MinimumNArgs(1)),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			addOpts.Specs = args
 			return envFor().ToolAdd(cmd.Context(), addOpts)
@@ -151,7 +179,7 @@ func writeCommands(envFor func() workflow.Env) []*cobra.Command {
 		Use:     "capture <file>...",
 		Short:   "把本机对已管理文件的改动写回仓库并提交",
 		Example: "  dsync capture ~/.gitconfig",
-		Args:    cobra.MinimumNArgs(1),
+		Args:    usageArgs(cobra.MinimumNArgs(1)),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			capOpts.Targets = args
 			return envFor().Capture(cmd.Context(), capOpts)
@@ -174,7 +202,7 @@ func writeCommands(envFor func() workflow.Env) []*cobra.Command {
 
 	sync := &cobra.Command{
 		Use:   "sync",
-		Short: "拉取仓库 → chezmoi apply → mise install --locked",
+		Short: "拉取仓库 → chezmoi apply → provision → mise install --locked",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return envFor().Sync(cmd.Context())
@@ -216,7 +244,7 @@ func writeCommands(envFor func() workflow.Env) []*cobra.Command {
 		Long: "每一步先检测再执行，可重复运行。不带参数时沿用 local.toml 中记录的仓库。\n" +
 			"仓库地址会克隆到 ~/" + workflow.DefaultCloneDir + "；已有本地仓库用 --source。",
 		Example: "  dsync init https://github.com/you/dotfiles.git\n  dsync init --source ~/dsync --geo official\n  dsync init --create --github you/dotfiles",
-		Args:    cobra.MaximumNArgs(1),
+		Args:    usageArgs(cobra.MaximumNArgs(1)),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 1 {
 				initOpts.Repo = args[0]
@@ -278,7 +306,7 @@ func hostCommand(envFor func() workflow.Env) *cobra.Command {
 			"每步先检测再执行，可重复运行；需要重启 / 首次登录时会暂停并说明，完成后重新运行即可。\n" +
 			"在本地仓库目录内运行且未给仓库参数时，默认 --source 当前目录（与 v1 一致）。",
 		Example: "  dsync host setup --source D:\\Develop\\dsync\n  dsync host setup https://github.com/you/dotfiles.git --wsl-install-dir D:\\Linux\n  dsync host setup --check",
-		Args:    cobra.MaximumNArgs(1),
+		Args:    usageArgs(cobra.MaximumNArgs(1)),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 1 {
 				o.Repo = args[0]

@@ -16,6 +16,8 @@ v1（bash 脚本实现）冻结在 dotfiles 仓库的 tag `v1-final`。
 | M5 Windows 宿主 | ✅ | `host setup`（取代 bootstrap.ps1）、`install.ps1`；真实 WSL 端到端验证 |
 | M6 拆仓 | ✅ | v2 布局（dsync 生成 chezmoi 配置并注入模板数据）、`verify`、starter 模板 + `init --create`；dotfiles 仓库迁移（L5 逐文件等价）；工具迁入本仓库 |
 
+**使用指南**：见 [docs/usage-guide.md](docs/usage-guide.md)（安装、首次部署、日常流程、`local.toml` / `dsync.toml` 参考、常见问题）。
+
 **本地手动测试**：见 [docs/testing-guide.md](docs/testing-guide.md)（新建 WSL 实例逐步验证）。
 
 ## 命令
@@ -44,7 +46,7 @@ dsync shell-init zsh     # 输出镜像 env / 代理 / WSL ssh-agent 桥接；�
 dsync status [--json]    # 平台、geo 来源、仓库 ahead/behind/dirty、chezmoi 漂移、mise 缺失工具
 dsync doctor [--json]    # 只读诊断；存在 fail 项时退出码 1
 dsync verify [--source <仓库>] [--json]   # 校验 dsync.toml，按 linux/darwin × cn/official 渲染全部模板（dotfiles 仓库 CI 使用）
-dsync version
+dsync version             # 或 dsync --version
 ```
 
 退出码：`0` 成功；`1` doctor / verify 发现问题；`2` 用法或执行错误。

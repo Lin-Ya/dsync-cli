@@ -60,8 +60,8 @@ func (e Env) Doctor(ctx context.Context) (DoctorReport, error) {
 	// 1) 底座工具
 	for _, t := range []struct{ name, hint string }{
 		{"git", "安装 git（apt install git / xcode-select --install）"},
-		{"mise", "curl https://mise.run | sh（后续由 dsync init 负责）"},
-		{"chezmoi", "BINDIR=~/.local/bin sh -c \"$(curl -fsLS get.chezmoi.io)\""},
+		{"mise", "dsync init <仓库地址>（自动下载固定版本并校验 sha256）"},
+		{"chezmoi", "dsync init <仓库地址>（自动下载固定版本并校验 sha256）"},
 	} {
 		if p, err := e.Runner.LookPath(t.name); err != nil {
 			add(t.name, Fail, "未找到", t.hint)
@@ -80,7 +80,7 @@ func (e Env) Doctor(ctx context.Context) (DoctorReport, error) {
 		add("local.toml", OK, "未创建（v1 兼容模式：geo 读 ~/.config/dsync/geo，代理读 proxy.env）", "")
 	}
 	if geo, src, err := config.ResolveGeo(e.Getenv, c.Paths, c.Local); err != nil {
-		add("geo", Fail, err.Error(), "dsync geo set cn|official（M2）")
+		add("geo", Fail, err.Error(), "dsync geo set cn|official")
 	} else {
 		add("geo", OK, fmt.Sprintf("%s（来自 %s）", geo, src), "")
 	}
@@ -88,11 +88,11 @@ func (e Env) Doctor(ctx context.Context) (DoctorReport, error) {
 	// 3) dotfiles 仓库
 	repo, rerr := e.LocateRepo(ctx, c)
 	if rerr != nil {
-		add("repo", Fail, rerr.Error(), "设置 local.toml [repo] path，或 dsync init（M4）")
+		add("repo", Fail, rerr.Error(), "") // 下一步已包含在 ErrRepoNotFound 中
 	} else {
 		add("repo", OK, fmt.Sprintf("%s（%s 布局，经 %s）", repo.Root, repo.Layout, repo.Via), "")
 		if repo.Layout == LayoutV1 {
-			add("layout", Warn, "仍为 v1 混合布局（工具与配置同仓）", "M6 提供 dsync migrate-v1 拆分")
+			add("layout", Warn, "仍为 v1 混合布局（工具与配置同仓）", "仓库迁移为 v2 布局（根目录 dsync.toml + .chezmoiroot）并推送后，dsync sync 会自动切换")
 		} else if _, _, err := config.LoadManifest(repo.Root); err != nil {
 			add("dsync.toml", Fail, err.Error(), "")
 		}
@@ -102,7 +102,7 @@ func (e Env) Doctor(ctx context.Context) (DoctorReport, error) {
 			} else if gs.Upstream == "" {
 				add("remote", Warn, "当前分支无上游，改动无法同步到其它机器", "git push -u origin "+gs.Branch)
 			} else if gs.Ahead > 0 {
-				add("remote", Warn, fmt.Sprintf("%d 个提交未推送，其它机器拿不到", gs.Ahead), "git -C "+repo.Root+" push")
+				add("remote", Warn, fmt.Sprintf("%d 个提交未推送，其它机器拿不到", gs.Ahead), "dsync save")
 			} else {
 				add("remote", OK, "已与 "+gs.Upstream+" 同步（以上次 fetch 为准）", "")
 			}
@@ -124,7 +124,7 @@ func (e Env) Doctor(ctx context.Context) (DoctorReport, error) {
 		if tools, err := e.mise().ListGlobal(ctx); err != nil {
 			add("mise tools", Warn, err.Error(), "")
 		} else if m := mise.Missing(tools); len(m) > 0 {
-			add("mise tools", Warn, fmt.Sprintf("%d/%d 个工具未安装", len(m), len(tools)), "mise install --locked")
+			add("mise tools", Warn, fmt.Sprintf("%d/%d 个工具未安装", len(m), len(tools)), "dsync sync")
 		} else {
 			add("mise tools", OK, fmt.Sprintf("%d 个工具全部已安装", len(tools)), "")
 		}

@@ -8,7 +8,7 @@
 | `home/` | chezmoi 源目录（`.chezmoiroot`）；`dot_` 前缀映射为 `~/.`，`.tmpl` 为模板 |
 | `home/dot_config/mise/config.toml` | 全局工具清单：`dsync tool add <tool>@<version>` 维护 |
 
-常用命令：
+常用命令（完整说明见 dsync-cli 仓库的 [使用指南](https://github.com/Lin-Ya/dsync-cli/blob/main/docs/usage-guide.md)）：
 
 ```bash
 dsync sync                      # 拉取 → 部署配置 → 系统步骤 → 安装工具

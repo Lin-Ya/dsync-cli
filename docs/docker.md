@@ -34,7 +34,7 @@ Docker **不属于** mise 管理（它是系统级服务）。本方案只负责
 ~/.config/dsync/scripts/install-docker-cli.sh
 ```
 
-该脚本在 WSL 内安装 docker CLI，并把 `DOCKER_HOST=unix:///var/run/docker.sock` 写入 `~/.zshrc.local`，指向 Windows 侧 Docker Desktop 的守护进程。
+该脚本由个人 dotfiles 仓库提供（`dsync init --create` 的 starter 模板不含），在 WSL 内安装 docker CLI，并把 `DOCKER_HOST=unix:///var/run/docker.sock` 写入 `~/.zshrc.local`，指向 Windows 侧 Docker Desktop 的守护进程。
 
 ## 验证
 

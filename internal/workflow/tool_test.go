@@ -276,3 +276,19 @@ func TestToolAdd_PlainSourceEditedInPlace(t *testing.T) {
 		t.Error("源文件未更新")
 	}
 }
+
+// 场景 I：新仓库还没有 lockfile 时，--dry-run 不应因读不到尚未生成的 mise.lock 而失败。
+func TestToolAdd_I_DryRunWithoutLockfile(t *testing.T) {
+	tf := newToolFixture(t)
+	os.Remove(filepath.Join(tf.home, ".config", "mise", "mise.lock"))
+	os.Remove(filepath.Join(tf.repo, "dot_config", "mise", "private_mise.lock"))
+	e := tf.Env()
+	e.DryRun = true
+	e.Runner = dexec.DryRun{Inner: tf.rec, Out: &tf.err}
+	if err := e.ToolAdd(context.Background(), ToolAddOptions{Specs: []string{"node@24"}}); err != nil {
+		t.Fatal(err)
+	}
+	if fileExists(filepath.Join(tf.repo, "dot_config", "mise", "private_mise.lock")) {
+		t.Error("dry-run 不得写入 lockfile")
+	}
+}

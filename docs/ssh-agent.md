@@ -1,6 +1,6 @@
 # SSH 密钥共享：WSL 复用 Windows SSH Agent
 
-让 WSL 内的 `git`/`ssh` 直接使用 **Windows 上的 ssh-agent**，密钥全程不离开 Windows，符合「SSH 私钥不入库」的安全边界（见 [secrets.md](secrets.md)）。
+让 WSL 内的 `git`/`ssh` 直接使用 **Windows 上的 ssh-agent**，密钥全程不离开 Windows，符合「SSH 私钥不入库」的安全边界。
 
 ## 原理
 
@@ -44,8 +44,8 @@ ssh-add "$env:USERPROFILE\.ssh\id_ed25519"
 - `dsync provision`（wsl-ssh-agent 步骤）下载 `npiperelay.exe` 到 `~/.local/bin`（仅在 WSL 内执行，非 WSL/CI/容器自动跳过）；
 - `dsync shell-init`（由 `~/.zshenv` eval）自动完成 `SSH_AUTH_SOCK` 导出与 socat 懒启动。
 
-若 GitHub 下载被墙，请先在 `~/.config/dsync/proxy.env` 配好本地代理再重跑
-`~/.config/dsync/scripts/reinstall-run-once.sh`（或直接手动把 `npiperelay.exe` 放到 `~/.local/bin/` 并 `chmod +x`）。
+若 GitHub 下载被墙，请先配好本地代理（`~/.config/dsync/local.toml` 的 `[proxy]`，见 [usage-guide.md](usage-guide.md#6-本机配置-localtoml)；新开终端生效）再重跑
+`dsync provision --only wsl-ssh-agent`（或直接手动把 `npiperelay.exe` 放到 `~/.local/bin/` 并 `chmod +x`）。
 
 ## 验证
 
