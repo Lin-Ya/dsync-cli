@@ -28,6 +28,7 @@ type VerifyReport struct {
 	Templates []string `json:"templates"` // 渲染的模板（相对 chezmoi 源目录）
 	Matrix    []string `json:"matrix"`    // 渲染组合，如 linux/cn
 	Errors    []string `json:"errors"`
+	Warnings  []string `json:"warnings"`
 }
 
 // 渲染矩阵：两种系统 × 两种镜像源。模板中的 git 身份用示例值，以覆盖"已设置身份"的分支。
@@ -38,7 +39,7 @@ var verifyUser = config.User{Name: "dsync verify", Email: "verify@example.com"}
 // Verify 校验 v2 dotfiles 仓库：dsync.toml 合法，且全部模板在每个组合下都能渲染
 // （引用不存在的数据键即报错，可发现模板拼写错误）。dotfiles 仓库的 CI 运行它。
 func (e Env) Verify(ctx context.Context, o VerifyOptions) (VerifyReport, error) {
-	r := VerifyReport{Templates: []string{}, Matrix: []string{}, Errors: []string{}}
+	r := VerifyReport{Templates: []string{}, Matrix: []string{}, Errors: []string{}, Warnings: []string{}}
 	repo, err := e.verifyRepo(ctx, o)
 	if err != nil {
 		return r, err
@@ -47,6 +48,9 @@ func (e Env) Verify(ctx context.Context, o VerifyOptions) (VerifyReport, error) 
 	if err != nil {
 		r.Errors = append(r.Errors, err.Error())
 		return r, nil
+	}
+	if m.Deps != (config.Deps{}) {
+		r.Warnings = append(r.Warnings, "dsync.toml [deps] 已被忽略：mise / chezmoi 版本随 dsync 固定（带 sha256 校验），请删除该表")
 	}
 	if err := e.require("chezmoi"); err != nil {
 		return r, err
@@ -153,6 +157,9 @@ func renderError(err error) string {
 
 // WriteText 以人类可读格式输出校验结果。
 func (r VerifyReport) WriteText(w io.Writer) {
+	for _, x := range r.Warnings {
+		fmt.Fprintf(w, "[WARN] %s\n", x)
+	}
 	if len(r.Errors) == 0 {
 		fmt.Fprintf(w, "[ OK ] dsync.toml 合法；%d 个模板在 %s 下均可渲染\n", len(r.Templates), strings.Join(r.Matrix, "、"))
 		return

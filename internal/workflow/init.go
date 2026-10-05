@@ -321,7 +321,7 @@ func (e Env) createRepo(ctx context.Context, c Context, github string) (RepoInfo
 			return RepoInfo{}, fmt.Errorf("创建 GitHub 仓库失败（本地仓库已建好，可稍后手动关联远端）: %w", err)
 		}
 	} else {
-		e.logf("  （仅本地仓库：在 GitHub 新建空的私有仓库后执行 git -C %s remote add origin <地址> && dsync save）", dest)
+		e.logf("  （仅本地仓库：在 GitHub 新建空的私有仓库，把地址写入 %s 的 [remote] url 后 dsync save）", filepath.Join(dest, config.ManifestFile))
 	}
 	info, ok := e.inspect(ctx, dest)
 	if !ok {

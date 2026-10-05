@@ -287,6 +287,8 @@ func TestDockerCheck(t *testing.T) {
 	s := dockerStep{}
 	if r := check(t, s, x); r.State != Manual || !strings.Contains(r.Detail, "WSL Integration") {
 		t.Errorf("WSL 无 docker 应给出集成提示: %+v", r)
+	} else if strings.Contains(r.Detail, "~/.config/dsync/scripts") || !strings.Contains(r.Detail, "docs/docker.md") {
+		t.Errorf("提示不应依赖个人 dotfiles 仓库中的脚本，应指向 docs/docker.md: %s", r.Detail)
 	}
 	rec.Paths["docker"] = "/usr/bin/docker"
 	if r := check(t, s, x); r.State != Done {

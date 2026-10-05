@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Lin-Ya/dsync-cli/internal/config"
 	"github.com/Lin-Ya/dsync-cli/internal/gitrepo"
 )
 
@@ -186,11 +187,43 @@ func (e Env) commitAndPush(ctx context.Context, git gitrepo.Repo, paths []string
 		e.logf(">>> 未推送。推送: dsync save（或 git -C %s push）", git.Dir)
 		return nil
 	}
-	if err := git.Push(ctx, ""); err != nil {
+	if err := e.ensureOrigin(ctx, git); err != nil {
+		return err
+	}
+	if err := pushCurrent(ctx, git); err != nil {
 		return fmt.Errorf("推送失败（未配置远端 / 认证 / 网络），处理后执行 dsync save 重试: %w", err)
 	}
 	e.logf(">>> 已推送。其它机器执行 dsync sync 即可同步")
 	return nil
+}
+
+// ensureOrigin：仓库没有 origin、而 dsync.toml 指定了 [remote].url 时按它添加
+// （init --create 只建本地仓库，写好 url 后 dsync save 即可首次推送）。
+func (e Env) ensureOrigin(ctx context.Context, git gitrepo.Repo) error {
+	m, _, err := config.LoadManifest(git.Dir) // v1 布局没有 dsync.toml：零值，不处理
+	if err != nil || m.Remote.URL == "" {
+		return err
+	}
+	if _, err := git.RemoteURL(ctx, "origin"); err == nil {
+		return nil
+	}
+	if err := git.AddRemote(ctx, "origin", m.Remote.URL); err != nil {
+		return err
+	}
+	e.logf("  已按 dsync.toml [remote].url 添加远端 origin: %s", m.Remote.URL)
+	return nil
+}
+
+// pushCurrent 推送当前分支：有上游时推送到上游，否则推送到 origin 并建立跟踪。
+func pushCurrent(ctx context.Context, git gitrepo.Repo) error {
+	st, err := git.Status(ctx)
+	if err != nil {
+		return err
+	}
+	if st.Upstream != "" {
+		return git.Push(ctx, "")
+	}
+	return git.PushSetUpstream(ctx, "origin")
 }
 
 // errNoGitIdentity 指向 local.toml：starter 模板的 ~/.gitconfig 从其 [user] 渲染身份。

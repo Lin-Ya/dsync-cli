@@ -28,13 +28,10 @@ Docker **不属于** mise 管理（它是系统级服务）。本方案只负责
 
 > ⚠️ Docker Desktop 的设置文件 **schema 随版本变化**，脚本可能无法写入。此时以 GUI 方式为准（两步搞定）。因此这不是阻碍，只是首次初始化的一次性配置。
 
-**兜底——只装 CLI 客户端**（集成始终无法启用时）：
+**兜底——只装 CLI 客户端**（集成始终无法启用时）：在 WSL 内安装 docker CLI（Docker 官方 apt 源的 `docker-ce-cli` 包，不装守护进程），再在 `~/.zshrc.local` 中加入
+`export DOCKER_HOST=unix:///var/run/docker.sock`，指向 Windows 侧 Docker Desktop 的守护进程。
 
-```bash
-~/.config/dsync/scripts/install-docker-cli.sh
-```
-
-该脚本由个人 dotfiles 仓库提供（`dsync init --create` 的 starter 模板不含），在 WSL 内安装 docker CLI，并把 `DOCKER_HOST=unix:///var/run/docker.sock` 写入 `~/.zshrc.local`，指向 Windows 侧 Docker Desktop 的守护进程。
+dsync 不内置这一步。若你的 dotfiles 仓库带有封装好的脚本（例如 `~/.config/dsync/scripts/install-docker-cli.sh`），直接运行即可。
 
 ## 验证
 

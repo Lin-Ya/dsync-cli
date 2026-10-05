@@ -204,6 +204,40 @@ func TestSync_RedetectsLayoutAfterPull(t *testing.T) {
 	}
 }
 
+// 仓库没有远端（init --create 之后）：save 按 dsync.toml [remote].url 添加 origin，推送并建立跟踪。
+func TestSave_AddsOriginFromManifestAndSetsUpstream(t *testing.T) {
+	tf := newToolFixture(t)
+	bare := filepath.Join(t.TempDir(), "remote.git")
+	if b, err := exec.Command("git", "init", "-q", "--bare", bare).CombinedOutput(); err != nil {
+		t.Fatalf("%v %s", err, b)
+	}
+	tf.write(t, "dsync/dsync.toml", "version = 1\n[remote]\nurl = '"+bare+"'\n")
+
+	e := tf.Env()
+	e.DryRun = true
+	e.Runner = dexec.DryRun{Inner: tf.rec, Out: &tf.err}
+	if err := e.Save(context.Background(), SaveOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(tf.git(t, "remote"), "origin") || !strings.Contains(tf.err.String(), "git push -u origin HEAD") {
+		t.Errorf("dry-run 只应打印，不添加远端:\n%s", tf.err.String())
+	}
+
+	if err := tf.Env().Save(context.Background(), SaveOptions{}); err != nil {
+		t.Fatalf("%v\n%s", err, tf.out.String())
+	}
+	if got := tf.git(t, "remote", "get-url", "origin"); got != bare {
+		t.Errorf("origin = %q", got)
+	}
+	if tf.git(t, "rev-parse", "--abbrev-ref", "@{upstream}") != "origin/main" {
+		t.Error("首次推送应建立上游跟踪")
+	}
+	out, _ := exec.Command("git", "-C", bare, "log", "-1", "--format=%s", "main").Output()
+	if !strings.HasPrefix(strings.TrimSpace(string(out)), "chore: dsync save") {
+		t.Errorf("远端应收到提交: %q", out)
+	}
+}
+
 // 没有 git 身份：capture 先于写回即失败；save 在无改动时仍可推送已有提交（不需要身份）。
 func TestNoGitIdentity_CaptureFailsEarlySaveStillPushes(t *testing.T) {
 	tf := newToolFixture(t)

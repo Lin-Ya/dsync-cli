@@ -79,6 +79,19 @@ func (e Env) chezmoiConfigPath(home string) string {
 	return filepath.Join(dir, "chezmoi", "chezmoi.toml")
 }
 
+// desiredChezmoiConfig 返回 v2 布局下应生成的 chezmoi 配置（configureChezmoi 写入它，status 拿它比对）。
+func desiredChezmoiConfig(c Context, repo RepoInfo, geo mirrors.Geo) ([]byte, error) {
+	m, _, err := config.LoadManifest(repo.Root)
+	if err != nil {
+		return nil, err
+	}
+	data, err := ChezmoiData(geo, c.Platform, c.Local, m)
+	if err != nil {
+		return nil, err
+	}
+	return chezmoiConfig(repo.Source, data, m)
+}
+
 // configureChezmoi 让 chezmoi 配置反映当前 geo / 本机配置 / 仓库清单：
 //   - v2 布局：由 dsync 直接生成配置（取代仓库中的 .chezmoi.toml.tmpl）；
 //   - v1 布局：仍按仓库 .chezmoi.toml.tmpl 执行 chezmoi init（DSYNC_GEO 经环境变量传入）。
@@ -86,15 +99,7 @@ func (e Env) configureChezmoi(ctx context.Context, c Context, repo RepoInfo, geo
 	if repo.Layout != LayoutV2 {
 		return e.reinitChezmoi(ctx, e.chezmoi(repo.Source), geo)
 	}
-	m, _, err := config.LoadManifest(repo.Root)
-	if err != nil {
-		return err
-	}
-	data, err := ChezmoiData(geo, c.Platform, c.Local, m)
-	if err != nil {
-		return err
-	}
-	b, err := chezmoiConfig(repo.Source, data, m)
+	b, err := desiredChezmoiConfig(c, repo, geo)
 	if err != nil {
 		return err
 	}

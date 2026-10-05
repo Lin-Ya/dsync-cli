@@ -1,15 +1,18 @@
 package workflow
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/Lin-Ya/dsync-cli/internal/chezmoi"
 	"github.com/Lin-Ya/dsync-cli/internal/config"
 	"github.com/Lin-Ya/dsync-cli/internal/gitrepo"
+	"github.com/Lin-Ya/dsync-cli/internal/mirrors"
 	"github.com/Lin-Ya/dsync-cli/internal/mise"
 	"github.com/Lin-Ya/dsync-cli/internal/platform"
 	"github.com/Lin-Ya/dsync-cli/internal/provision"
@@ -17,21 +20,23 @@ import (
 
 // StatusReport 是 `dsync status` 的结果（--json 时原样输出，字段即契约）。
 type StatusReport struct {
-	Platform  platform.Platform     `json:"platform"`
-	Geo       string                `json:"geo"`
-	GeoFrom   string                `json:"geo_source"`
-	Repo      *RepoInfo             `json:"repo,omitempty"`
-	Git       *gitrepo.Status       `json:"git,omitempty"`
-	Drift     []chezmoi.StatusEntry `json:"drift"`             // 目标与源不一致的文件（不含 run_ 脚本）
-	Tools     int                   `json:"tools"`             // 全局配置中的工具数
-	Missing   []string              `json:"missing_tools"`     // 未安装的工具
-	Provision []string              `json:"provision_pending"` // 待执行的 provision 步骤
-	Warnings  []string              `json:"warnings"`
+	Platform platform.Platform     `json:"platform"`
+	Geo      string                `json:"geo"`
+	GeoFrom  string                `json:"geo_source"`
+	Repo     *RepoInfo             `json:"repo,omitempty"`
+	Git      *gitrepo.Status       `json:"git,omitempty"`
+	Drift    []chezmoi.StatusEntry `json:"drift"` // 目标与源不一致的文件（不含 run_ 脚本）
+	// ConfigStale：chezmoi 配置落后于 local.toml / dsync.toml / geo（v2 布局；改了它们但还没 dsync sync）
+	ConfigStale bool     `json:"config_stale"`
+	Tools       int      `json:"tools"`             // 全局配置中的工具数
+	Missing     []string `json:"missing_tools"`     // 未安装的工具
+	Provision   []string `json:"provision_pending"` // 待执行的 provision 步骤
+	Warnings    []string `json:"warnings"`
 }
 
 // Clean 表示本机与仓库完全同步、无待办。
 func (s StatusReport) Clean() bool {
-	return len(s.Drift) == 0 && len(s.Missing) == 0 && len(s.Provision) == 0 && len(s.Warnings) == 0 &&
+	return !s.ConfigStale && len(s.Drift) == 0 && len(s.Missing) == 0 && len(s.Provision) == 0 && len(s.Warnings) == 0 &&
 		s.Git != nil && s.Git.Ahead == 0 && s.Git.Behind == 0 && len(s.Git.Dirty) == 0
 }
 
@@ -66,6 +71,14 @@ func (e Env) Status(ctx context.Context) (StatusReport, error) {
 		if repo.Layout == LayoutV2 {
 			if _, _, err := config.LoadManifest(repo.Root); err != nil {
 				warn("%v", err)
+			} else if r.Geo != "" {
+				want, err := desiredChezmoiConfig(c, repo, mirrors.Geo(r.Geo))
+				if err != nil {
+					warn("chezmoi 配置: %v", err)
+				} else {
+					have, _ := os.ReadFile(e.chezmoiConfigPath(c.Paths.Home)) // 不存在 = 从未生成，同样待更新
+					r.ConfigStale = !bytes.Equal(want, have)
+				}
 			}
 		}
 	}
@@ -138,10 +151,15 @@ func (s StatusReport) WriteText(w io.Writer) {
 		}
 		fmt.Fprintln(w)
 	}
-	if len(s.Drift) == 0 {
+	label := "配置    "
+	if s.ConfigStale {
+		fmt.Fprintf(w, "%slocal.toml / dsync.toml / geo 有改动尚未部署 → dsync sync\n", label)
+		label = "        "
+	}
+	if len(s.Drift) == 0 && !s.ConfigStale {
 		fmt.Fprintln(w, "配置    已同步")
-	} else {
-		fmt.Fprintf(w, "配置    %d 个文件与仓库不一致:\n", len(s.Drift))
+	} else if len(s.Drift) > 0 {
+		fmt.Fprintf(w, "%s%d 个文件与仓库不一致:\n", label, len(s.Drift))
 		for _, d := range s.Drift {
 			fmt.Fprintf(w, "          %s%s %s\n", or(d.LastWrite, " "), or(d.Apply, " "), d.Path)
 		}

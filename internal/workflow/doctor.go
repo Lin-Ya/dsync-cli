@@ -91,10 +91,13 @@ func (e Env) Doctor(ctx context.Context) (DoctorReport, error) {
 		add("repo", Fail, rerr.Error(), "") // 下一步已包含在 ErrRepoNotFound 中
 	} else {
 		add("repo", OK, fmt.Sprintf("%s（%s 布局，经 %s）", repo.Root, repo.Layout, repo.Via), "")
+		var m config.Manifest
 		if repo.Layout == LayoutV1 {
 			add("layout", Warn, "仍为 v1 混合布局（工具与配置同仓）", "仓库迁移为 v2 布局（根目录 dsync.toml + .chezmoiroot）并推送后，dsync sync 会自动切换")
-		} else if _, _, err := config.LoadManifest(repo.Root); err != nil {
+		} else if mm, _, err := config.LoadManifest(repo.Root); err != nil {
 			add("dsync.toml", Fail, err.Error(), "")
+		} else {
+			m = mm
 		}
 		if e.has("git") {
 			if id, err := (gitrepo.Repo{R: e.Runner, Dir: repo.Root}).Ident(ctx); err != nil {
@@ -105,11 +108,21 @@ func (e Env) Doctor(ctx context.Context) (DoctorReport, error) {
 			if gs, err := (gitrepo.Repo{R: e.Runner, Dir: repo.Root}).Status(ctx); err != nil {
 				add("git", Warn, err.Error(), "")
 			} else if gs.Upstream == "" {
-				add("remote", Warn, "当前分支无上游，改动无法同步到其它机器", "git push -u origin "+gs.Branch)
+				add("remote", Warn, "当前分支无上游，改动无法同步到其它机器", "dsync save（推送到 origin 并建立跟踪）")
 			} else if gs.Ahead > 0 {
 				add("remote", Warn, fmt.Sprintf("%d 个提交未推送，其它机器拿不到", gs.Ahead), "dsync save")
 			} else {
 				add("remote", OK, "已与 "+gs.Upstream+" 同步（以上次 fetch 为准）", "")
+			}
+			if url := m.Remote.URL; url != "" {
+				if origin, err := (gitrepo.Repo{R: e.Runner, Dir: repo.Root}).RemoteURL(ctx, "origin"); err != nil {
+					add("remote url", Warn, "未配置 origin（dsync.toml [remote].url = "+url+"）", "dsync save 推送时会自动添加")
+				} else if !sameRemote(origin, url) {
+					add("remote url", Warn, fmt.Sprintf("origin %s 与 dsync.toml [remote].url %s 不一致", origin, url),
+						"git -C "+repo.Root+" remote set-url origin "+url+"（或修改 dsync.toml）")
+				} else {
+					add("remote url", OK, origin, "")
+				}
 			}
 		}
 		if e.has("chezmoi") {
@@ -165,6 +178,22 @@ func (e Env) versionOf(ctx context.Context, name, path string) string {
 	}
 	v, _, _ := strings.Cut(strings.TrimSpace(string(res.Stdout)), "\n")
 	return v
+}
+
+// sameRemote 判断两个 git 地址是否指向同一仓库：忽略协议（ssh / https / scp 形式）、用户名与末尾的 .git、/。
+func sameRemote(a, b string) bool { return normRemote(a) == normRemote(b) }
+
+func normRemote(u string) string {
+	u = strings.TrimSuffix(strings.TrimSuffix(strings.TrimSpace(u), "/"), ".git")
+	if i := strings.Index(u, "://"); i >= 0 {
+		u = u[i+3:]
+	} else if i := strings.Index(u, ":"); i > 0 && strings.Contains(u[:i], "@") {
+		u = u[:i] + "/" + u[i+1:] // scp 形式 git@host:owner/repo
+	}
+	if i := strings.Index(u, "@"); i >= 0 && i < strings.Index(u+"/", "/") {
+		u = u[i+1:]
+	}
+	return u
 }
 
 func samePath(a, b string) bool {

@@ -116,6 +116,23 @@ func TestContract_V2GeoSetRendersFromInjectedData(t *testing.T) {
 	}
 }
 
+func TestContract_VerifyWarnsIgnoredDeps(t *testing.T) {
+	needBin(t, "chezmoi")
+	repo := v2Repo(t, isolatedHome(t))
+	m := readFile(t, filepath.Join(repo, "dsync.toml"))
+	os.WriteFile(filepath.Join(repo, "dsync.toml"), []byte(m+"\n[deps]\nmise = \"2026.1.0\"\n"), 0o644)
+	var out bytes.Buffer
+	e := Env{Getenv: os.Getenv, Runner: dexec.Real{}, RootFS: os.DirFS("/"), Out: &out, Err: &out}
+	r, err := e.Verify(context.Background(), VerifyOptions{Source: repo})
+	if err != nil || len(r.Errors) != 0 || len(r.Warnings) != 1 || !strings.Contains(r.Warnings[0], "[deps] 已被忽略") {
+		t.Errorf("[deps] 应只告警不报错: %+v %v", r, err)
+	}
+	r.WriteText(&out)
+	if !strings.Contains(out.String(), "[WARN] dsync.toml [deps]") || !strings.Contains(out.String(), "[ OK ]") {
+		t.Errorf("文本输出:\n%s", out.String())
+	}
+}
+
 func TestContract_Verify(t *testing.T) {
 	needBin(t, "chezmoi")
 	home := isolatedHome(t)

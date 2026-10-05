@@ -189,6 +189,9 @@ func TestStatus(t *testing.T) {
 	if len(r.Warnings) != 0 || r.Clean() {
 		t.Errorf("warnings=%v clean=%v", r.Warnings, r.Clean())
 	}
+	if !r.ConfigStale { // fixture 从未生成过 chezmoi 配置
+		t.Error("没有 chezmoi 配置时应为 config_stale")
+	}
 	for _, c := range f.rec.Calls {
 		if c.Mutating {
 			t.Errorf("status 必须只读，却执行了: %s", c.Cmd)
@@ -306,6 +309,54 @@ func TestStatus_EmptyListsAreArraysInJSON(t *testing.T) {
 	}
 }
 
+func TestSameRemote(t *testing.T) {
+	same := [][2]string{
+		{"git@github.com:Lin-Ya/dsync.git", "https://github.com/Lin-Ya/dsync"},
+		{"ssh://git@github.com/Lin-Ya/dsync.git", "https://x-token@github.com/Lin-Ya/dsync.git/"},
+		{"/mnt/c/dsync-test/origin.git", "/mnt/c/dsync-test/origin"},
+	}
+	for _, c := range same {
+		if !sameRemote(c[0], c[1]) {
+			t.Errorf("%s 与 %s 应视为同一仓库", c[0], c[1])
+		}
+	}
+	if sameRemote("git@github.com:Lin-Ya/dsync.git", "git@github.com:Lin-Ya/other.git") ||
+		sameRemote("/mnt/c/dsync-test/origin.git", "git@github.com:Lin-Ya/dsync.git") {
+		t.Error("不同仓库不应视为相同")
+	}
+}
+
+func TestDoctor_RemoteURL(t *testing.T) {
+	cases := []struct {
+		origin exec.Result
+		level  Level
+	}{
+		{exec.Result{Stdout: []byte("https://github.com/me/dots\n")}, OK},
+		{exec.Result{Stdout: []byte("git@github.com:me/other.git\n")}, Warn},
+		{exec.Result{ExitCode: 2, Stderr: []byte("error: No such remote 'origin'")}, Warn},
+	}
+	for _, c := range cases {
+		f := newFixture(t)
+		setupV2Repo(t, f)
+		f.write(t, "dots/dsync.toml", "version = 1\n[remote]\nurl = 'git@github.com:me/dots.git'\n")
+		f.rec.On("git remote get-url origin", c.origin)
+		d, err := f.Env().Doctor(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := find(d, "remote url"); got.Level != c.level {
+			t.Errorf("origin %q: remote url = %+v", c.origin.Stdout, got)
+		}
+	}
+	// 未设置 [remote].url：不检查
+	f := newFixture(t)
+	setupV2Repo(t, f)
+	d, _ := f.Env().Doctor(context.Background())
+	if got := find(d, "remote url"); got.Name != "" {
+		t.Errorf("未设置 url 时不应检查: %+v", got)
+	}
+}
+
 func find(d DoctorReport, name string) Check {
 	for _, c := range d.Checks {
 		if c.Name == name {
@@ -313,4 +364,55 @@ func find(d DoctorReport, name string) Check {
 		}
 	}
 	return Check{}
+}
+
+// 改了 local.toml / dsync.toml 但还没 sync：status 应提示 chezmoi 配置待更新（只读，不改写配置）。
+func TestStatus_ConfigStale(t *testing.T) {
+	f := newFixture(t)
+	setupV2Repo(t, f)
+	e := f.Env()
+	ctx := context.Background()
+	deploy := func() {
+		c, _ := e.Load()
+		repo, err := e.LocateRepo(ctx, c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := e.configureChezmoi(ctx, c, repo, "official"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stale := func() StatusReport {
+		r, err := e.Status(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+
+	deploy()
+	if r := stale(); r.ConfigStale {
+		t.Fatal("刚生成配置后不应为 config_stale")
+	}
+	f.write(t, ".config/dsync/local.toml", "geo = \"official\"\n[repo]\npath = \"~/dots\"\n[user]\nname = \"Me\"\n")
+	r := stale()
+	if !r.ConfigStale {
+		t.Error("改了 local.toml [user] 后应为 config_stale")
+	}
+	var buf bytes.Buffer
+	r.WriteText(&buf)
+	if !strings.Contains(buf.String(), "有改动尚未部署 → dsync sync") {
+		t.Errorf("文本输出应提示 dsync sync:\n%s", buf.String())
+	}
+
+	deploy()
+	f.write(t, "dots/dsync.toml", "version = 1\n[data]\neditor = \"vim\"\n")
+	if !stale().ConfigStale {
+		t.Error("改了 dsync.toml [data] 后应为 config_stale")
+	}
+	deploy()
+	f.env["DSYNC_GEO"] = "cn" // 显式覆盖 geo：sync 会按 cn 生成，status 应一致地判定为待更新
+	if !stale().ConfigStale {
+		t.Error("geo 变化后应为 config_stale")
+	}
 }

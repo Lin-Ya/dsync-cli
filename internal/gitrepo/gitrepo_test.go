@@ -72,4 +72,24 @@ func TestStatus_RealGit(t *testing.T) {
 	if (Repo{R: dexec.Real{}, Dir: t.TempDir()}).IsRepo(context.Background()) {
 		t.Error("空目录不应识别为仓库")
 	}
+
+	// 远端：不存在时报错；添加后首次推送建立上游跟踪
+	ctx := context.Background()
+	if _, err := r.RemoteURL(ctx, "origin"); err == nil {
+		t.Error("没有 origin 时应报错")
+	}
+	bare := t.TempDir()
+	git("init", "-q", "--bare", bare)
+	if err := r.AddRemote(ctx, "origin", bare); err != nil {
+		t.Fatal(err)
+	}
+	if u, err := r.RemoteURL(ctx, "origin"); err != nil || u != bare {
+		t.Errorf("RemoteURL = %q, %v", u, err)
+	}
+	if err := r.PushSetUpstream(ctx, "origin"); err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := r.Status(ctx); s.Upstream != "origin/main" {
+		t.Errorf("首次推送后应建立上游: %+v", s)
+	}
 }

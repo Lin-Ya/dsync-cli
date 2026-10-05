@@ -346,7 +346,7 @@ func (dockerStep) Check(_ context.Context, x *Context) (Result, error) {
 	case x.Platform.OS == "darwin":
 		return Result{State: Manual, Detail: "未找到 docker，安装 Homebrew 后重跑以安装 OrbStack"}, nil
 	case x.Platform.WSL:
-		return Result{State: Manual, Detail: "未找到 docker：确认 Windows 侧 Docker Desktop 已启动，并在 Settings → Resources → WSL Integration 勾选本发行版（仍不行可运行 ~/.config/dsync/scripts/install-docker-cli.sh）"}, nil
+		return Result{State: Manual, Detail: "未找到 docker：确认 Windows 侧 Docker Desktop 已启动，并在 Settings → Resources → WSL Integration 勾选本发行版（仍不行见 dsync-cli 仓库 docs/docker.md 的兜底方案）"}, nil
 	}
 	return Result{State: Manual, Detail: "未找到 docker（见 docs/docker.md）"}, nil
 }

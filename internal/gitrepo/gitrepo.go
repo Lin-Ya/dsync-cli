@@ -101,6 +101,15 @@ func (r Repo) Ident(ctx context.Context) (string, error) {
 	return s, nil
 }
 
+// RemoteURL 返回远端地址；该远端不存在时返回错误。
+func (r Repo) RemoteURL(ctx context.Context, name string) (string, error) {
+	res, err := r.R.Query(ctx, exec.Cmd{Name: "git", Args: []string{"remote", "get-url", name}, Dir: r.Dir})
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(res.Stdout)), nil
+}
+
 // ---------- 写操作 ----------
 
 func (r Repo) run(ctx context.Context, args ...string) error {
@@ -139,6 +148,16 @@ func (r Repo) Staged(ctx context.Context) ([]string, error) {
 // Commit 提交已暂存的改动。
 func (r Repo) Commit(ctx context.Context, msg string) error {
 	return r.run(ctx, "commit", "-m", msg)
+}
+
+// AddRemote 添加远端。
+func (r Repo) AddRemote(ctx context.Context, name, url string) error {
+	return r.run(ctx, "remote", "add", name, url)
+}
+
+// PushSetUpstream 把当前分支推送到 remote 并设为上游（分支首次推送）。
+func (r Repo) PushSetUpstream(ctx context.Context, remote string) error {
+	return r.run(ctx, "push", "-u", remote, "HEAD")
 }
 
 // Push 推送当前分支；remote 为空时推送到上游。

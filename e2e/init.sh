@@ -64,6 +64,7 @@ PATH="$HOME/.local/bin:$PATH" mise which fzf >/dev/null || fail "fzf 未由 mise
 
 PATH="$HOME/.local/bin:$PATH" dsync status --json > /tmp/status.json
 cat /tmp/status.json
+grep -q '"config_stale": false' /tmp/status.json || fail "status.config_stale 为 true（未收敛）"
 for k in drift missing_tools provision_pending; do
   grep -q "\"$k\": \[\]" /tmp/status.json || fail "status.$k 非空（未收敛）"
 done
