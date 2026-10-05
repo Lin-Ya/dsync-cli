@@ -111,7 +111,7 @@ func TestContract_V2GeoSetRendersFromInjectedData(t *testing.T) {
 	}
 	// 生成的配置自带 sourceDir：不带 --source 的 chezmoi 也能找到源目录
 	b, err := exec.Command("chezmoi", "source-path").Output()
-	if err != nil || strings.TrimSpace(string(b)) != filepath.Join(repo, "home") {
+	if err != nil || strings.TrimSpace(string(b)) != realpath(t, filepath.Join(repo, "home")) { // chezmoi 返回解析符号链接后的路径
 		t.Errorf("chezmoi source-path = %q, %v", b, err)
 	}
 }

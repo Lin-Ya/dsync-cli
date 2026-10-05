@@ -20,7 +20,15 @@ import (
 // isolatedHome 设置隔离的进程环境并返回伪 HOME。
 func isolatedHome(t *testing.T) string {
 	t.Helper()
-	home := t.TempDir()
+	// HOME 放在符号链接之后：在 Linux 上也复现 macOS 的 /var → /private/var（chezmoi 会解析符号链接）
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "real"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	home := filepath.Join(dir, "home")
+	if err := os.Symlink(filepath.Join(dir, "real"), home); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("HOME", home)
 	for _, k := range []string{"XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME",
 		"DSYNC_GEO", "DSYNC_GEO_SOURCE", "DSYNC_CONFIG_DIR", "CHEZMOI_SOURCE_DIR", "CHEZMOI_AGE_RECIPIENT"} {

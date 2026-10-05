@@ -13,8 +13,15 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.DSYNC_CLI_TOKEN }}
         run: |
+          set -euo pipefail
+          if [ -z "$GITHUB_TOKEN" ]; then
+            echo "::error::缺少 secret DSYNC_CLI_TOKEN（Settings → Secrets → Actions；需对 Lin-Ya/dsync-cli 有 Contents 读权限）"
+            exit 1
+          fi
+          # 先下载再执行（不用 curl | sh：管道中 curl 失败会被吞掉，后续步骤才报 dsync: command not found）
           curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github.raw" \
-            "https://api.github.com/repos/Lin-Ya/dsync-cli/contents/install/install.sh" | sh
+            -o "$RUNNER_TEMP/install-dsync.sh" "https://api.github.com/repos/Lin-Ya/dsync-cli/contents/install/install.sh"
+          sh "$RUNNER_TEMP/install-dsync.sh"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: 安装 chezmoi
         run: BINDIR="$HOME/.local/bin" sh -c "$(curl -fsLS get.chezmoi.io)"
