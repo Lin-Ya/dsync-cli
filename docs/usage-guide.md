@@ -51,27 +51,29 @@ dsync init --create [--github you/dotfiles]      # 还没有仓库：用内置 s
 
 1. 下载固定版本的 mise / chezmoi 并校验（已安装则跳过；git 需系统自带）
 2. 获取 dotfiles 仓库
-3. 写入 `local.toml`（geo、仓库位置）
+3. 写入 `local.toml`（geo、仓库位置、git 身份——见下文）
 4. 生成 chezmoi 配置并 `chezmoi apply`
 5. `provision`：系统级步骤（会用到 sudo）
 6. `mise install`（有 lockfile 时严格按锁定版本）
 
 想先看会做什么：`dsync --dry-run init <仓库地址>`。国内镜像不可用时加 `--geo official`。
 
-**部署后必做的三件事**
-
-```bash
-exec zsh          # 进入新 shell，让 ~/.zshenv 中的 dsync shell-init 生效
-dsync status      # 确认：配置已同步、工具全部已安装、无待执行的系统步骤
-```
-
-然后编辑 `~/.config/dsync/local.toml`，填上 git 身份（否则之后的 `capture` / `tool add` / `save` 会因无法提交而失败），需要的话加上代理，再执行 `dsync sync` 使其生效：
+**git 身份**：`capture` / `tool add` / `save` 需要提交 dotfiles 仓库。第 3 步按以下顺序补全 `local.toml` 的 `[user]`：已有值 → 本机 `git config --global` 中的身份（在 `~/.gitconfig` 被受管理的版本覆盖之前导入）→ 在终端中提问（直接回车跳过；经 `curl | sh` 执行等非交互场景不提问）。仍未设置时，`init` 结束时会提示，之后可手工补上并 `dsync sync`：
 
 ```toml
 [user]
 name = 'Your Name'
 email = 'you@example.com'
 ```
+
+**部署后**
+
+```bash
+exec zsh          # 进入新 shell，让 ~/.zshenv 中的 dsync shell-init 生效
+dsync status      # 确认：配置已同步、工具全部已安装、无待执行的系统步骤
+```
+
+需要代理的话在 `local.toml` 加上 `[proxy]`（见[第 6 节](#6-本机配置-localtoml)）。
 
 用 `--create` 且没带 `--github` 时，仓库只在本地。要让其它机器能同步，在 GitHub 新建一个空的私有仓库后：
 
@@ -179,9 +181,9 @@ git     main → origin/main  ↑1 未推送  2 个未提交改动
 - "配置"行的两列代码来自 `chezmoi status`：`A` 新增、`M` 修改、`D` 删除。首列非空 = 你在本机改过它；只有次列 = 仓库有更新尚未部署。
 - git 行：`↑ 未推送` / `未提交改动` → `dsync save`；`↓ 待拉取` → `dsync sync`（以上次 fetch 为准）。
 
-**`dsync doctor`**——逐项检查底座工具、`local.toml`、仓库与远端、工具安装、ssh-agent、docker，`[WARN]` / `[FAIL]` 项下方的 `→` 是处理办法。有 `[FAIL]` 时退出码为 1。
+**`dsync doctor`**——逐项检查底座工具、`local.toml`、仓库、git 身份与远端、工具安装、ssh-agent、docker，`[WARN]` / `[FAIL]` 项下方的 `→` 是处理办法。有 `[FAIL]` 时退出码为 1。
 
-**机器可读输出**：`--json` 对 `status`、`doctor`、`verify`、`provision --check`、`host setup --check` 有效（其它命令忽略它）。反馈问题时请附上这几条的输出和 `dsync version`。
+**机器可读输出**：`status`、`doctor`、`verify`、`provision --check`、`host setup --check` 支持 `--json`，须写在子命令之后（`dsync status --json`）；其它命令传 `--json` 会报错。反馈问题时请附上这几条的输出和 `dsync version`。
 
 **退出码**：`0` 成功；`1` doctor / verify 发现问题；`2` 用法或执行错误。
 
@@ -332,7 +334,7 @@ dsync self-update --version v2.0.0   # 指定版本；--force 重新安装同一
 | 现象 | 原因与处理 |
 |---|---|
 | `找不到 dotfiles 仓库` | 这台机器还没部署：`dsync init <仓库地址>`（或 `--source` / `--create`） |
-| `提交失败（git 身份未配置？）` | 在 `local.toml` 的 `[user]` 填 name / email，`dsync sync` 后重试 |
+| `git 身份未配置，无法提交` | 在 `local.toml` 的 `[user]` 填 name / email，`dsync sync` 后重试（命令在改动任何文件之前就会检查） |
 | `推送失败`，git 提示 `No configured push destination` | 仓库没有远端：`git -C <仓库> remote add origin <地址>` 后 `dsync save` |
 | `capture` 报"含模板变量，无法自动写回" | `chezmoi edit --apply <文件>` 手工改模板，然后 `dsync save` |
 | `capture` 报"未被 dsync 管理" | 新文件先 `chezmoi add <文件>`，然后 `dsync save` |

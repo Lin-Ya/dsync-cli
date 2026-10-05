@@ -110,6 +110,12 @@ func (e Env) Capture(ctx context.Context, o CaptureOptions) error {
 		return err
 	}
 	cz := e.chezmoi(repo.Source)
+	git := gitrepo.Repo{R: e.Runner, Dir: repo.Root}
+	if !o.NoCommit {
+		if err := e.requireGitIdentity(ctx, git); err != nil {
+			return err
+		}
+	}
 
 	var changed []string
 	for _, t := range o.Targets {
@@ -141,7 +147,7 @@ func (e Env) Capture(ctx context.Context, o CaptureOptions) error {
 	if o.NoCommit {
 		return nil
 	}
-	return e.commitAndPush(ctx, gitrepo.Repo{R: e.Runner, Dir: repo.Root}, changed, "chore: capture "+strings.Join(changed, " "), o.Push)
+	return e.commitAndPush(ctx, git, changed, "chore: capture "+strings.Join(changed, " "), o.Push)
 }
 
 // SaveOptions 是 `dsync save` 的参数。

@@ -54,6 +54,9 @@ func TestExitCodes(t *testing.T) {
 		{[]string{"--dry-run", "save"}, 2, ""},
 		{[]string{"provision", "--check", "--json"}, 0, `"items"`},
 		{[]string{"provision", "--json"}, 2, ""},
+		{[]string{"--json", "status"}, 2, ""}, // --json 属于子命令，须写在其后
+		{[]string{"sync", "--json"}, 2, ""},   // 不支持 --json 的命令明确报错
+		{[]string{"--dry-run", "save", "--json"}, 2, ""},
 		{[]string{"provision", "--check", "--only", "nix"}, 2, ""},
 		{[]string{"init", "a", "b"}, 2, ""},
 		{[]string{"init"}, 2, ""},                     // 伪环境没有 git
@@ -89,5 +92,18 @@ func TestUsageHints(t *testing.T) {
 		if c.GroupID == "" {
 			t.Errorf("命令 %s 未归入任何分组", c.Name())
 		}
+	}
+}
+
+// 不支持 --json 的命令：报未知 flag 并附用法，帮助中也不出现 --json。
+func TestJSONOnlyWhereSupported(t *testing.T) {
+	if _, _, errOut := run(t, "sync", "--json"); !strings.Contains(errOut, "unknown flag: --json") || !strings.Contains(errOut, "用法: dsync sync") {
+		t.Errorf("应报未知 flag 并附用法:\n%s", errOut)
+	}
+	if _, out, _ := run(t, "sync", "--help"); strings.Contains(out, "--json") {
+		t.Errorf("sync 帮助不应出现 --json:\n%s", out)
+	}
+	if _, out, _ := run(t, "provision", "--help"); !strings.Contains(out, "需与 --check 一起使用") {
+		t.Errorf("provision 帮助应说明 --json 需配合 --check:\n%s", out)
 	}
 }

@@ -282,3 +282,56 @@ func TestInit_CreateWithGitHub(t *testing.T) {
 		t.Errorf("gh 调用: %v", got)
 	}
 }
+
+// git 身份：local.toml 已有值优先，其次导入 git 全局配置，仍缺失时（交互终端）提问。
+func TestInit_GitIdentity(t *testing.T) {
+	src := func(f *fixture) InitOptions {
+		f.write(t, "src/dots/.chezmoi.toml.tmpl", "")
+		return InitOptions{Source: "~/src/dots"}
+	}
+	local := func(f *fixture) string { return readFile(t, filepath.Join(f.home, ".config", "dsync", "local.toml")) }
+
+	t.Run("导入 git 全局配置", func(t *testing.T) {
+		f := initFixture(t)
+		f.rec.OnStdout("git config --global --get user.name", "Global Me\n").
+			OnStdout("git config --global --get user.email", "g@example.com\n")
+		e := f.Env()
+		e.Prompt = func(q string) string { t.Errorf("已有身份时不应提问: %s", q); return "" }
+		if err := e.Init(context.Background(), src(f)); err != nil {
+			t.Fatal(err)
+		}
+		if l := local(f); !strings.Contains(l, "name = 'Global Me'") || !strings.Contains(l, "email = 'g@example.com'") {
+			t.Errorf("local.toml:\n%s", l)
+		}
+	})
+
+	t.Run("local.toml 优先，只补缺失项并提问", func(t *testing.T) {
+		f := initFixture(t)
+		f.write(t, ".config/dsync/local.toml", "[user]\nname = 'Local Me'\n")
+		var asked []string
+		e := f.Env()
+		e.Prompt = func(q string) string { asked = append(asked, q); return "typed@example.com" }
+		if err := e.Init(context.Background(), src(f)); err != nil {
+			t.Fatal(err)
+		}
+		if len(asked) != 1 || !strings.Contains(asked[0], "user.email") {
+			t.Errorf("应只询问 email: %v", asked)
+		}
+		if l := local(f); !strings.Contains(l, "name = 'Local Me'") || !strings.Contains(l, "email = 'typed@example.com'") {
+			t.Errorf("local.toml:\n%s", l)
+		}
+	})
+
+	t.Run("非交互且无身份：提示后继续", func(t *testing.T) {
+		f := initFixture(t)
+		if err := f.Env().Init(context.Background(), src(f)); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(local(f), "[user]") {
+			t.Errorf("不应写入空身份:\n%s", local(f))
+		}
+		if !strings.Contains(f.out.String(), "[user] 填写 name / email") {
+			t.Errorf("下一步应提示设置身份:\n%s", f.out.String())
+		}
+	})
+}

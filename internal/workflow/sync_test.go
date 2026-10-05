@@ -203,3 +203,34 @@ func TestSync_RedetectsLayoutAfterPull(t *testing.T) {
 		t.Error("拉取后应按 v2 布局生成 chezmoi 配置")
 	}
 }
+
+// 没有 git 身份：capture 先于写回即失败；save 在无改动时仍可推送已有提交（不需要身份）。
+func TestNoGitIdentity_CaptureFailsEarlySaveStillPushes(t *testing.T) {
+	tf := newToolFixture(t)
+	bare := withRemote(t, tf)
+	tf.git(t, "commit", "-q", "--allow-empty", "-m", "unpushed")
+	tf.noGitIdentity(t)
+
+	target := filepath.Join(tf.home, ".config", "mise", "config.toml")
+	tf.write(t, ".config/mise/config.toml", baseConfig+"edited = true\n")
+	tf.managed(t, target, filepath.Join(tf.repo, "dot_config", "mise", "config.toml.tmpl"))
+	if err := tf.Env().Capture(context.Background(), CaptureOptions{Targets: []string{target}}); err != errNoGitIdentity {
+		t.Fatalf("capture 应报 git 身份未配置: %v", err)
+	}
+	if tf.src(t, "config.toml.tmpl") != baseConfig {
+		t.Error("身份缺失时不应写回源文件")
+	}
+
+	if err := tf.Env().Save(context.Background(), SaveOptions{}); err != nil {
+		t.Fatalf("无改动时 save 不需要身份: %v", err)
+	}
+	out, _ := exec.Command("git", "-C", bare, "log", "-1", "--format=%s", "main").Output()
+	if strings.TrimSpace(string(out)) != "unpushed" {
+		t.Errorf("应推送已有提交: %q", out)
+	}
+
+	tf.write(t, "dsync/new.txt", "x\n")
+	if err := tf.Env().Save(context.Background(), SaveOptions{}); err != errNoGitIdentity {
+		t.Errorf("有改动时 save 应报 git 身份未配置: %v", err)
+	}
+}

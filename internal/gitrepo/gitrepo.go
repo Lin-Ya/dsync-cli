@@ -87,6 +87,20 @@ func (r Repo) IsRepo(ctx context.Context) bool {
 	return err == nil && strings.TrimSpace(string(res.Stdout)) == "true"
 }
 
+// Ident 返回提交身份 "Name <email>"。判定与 git commit 一致（环境变量、各级配置、自动推断邮箱），
+// 身份不可用（如未设置 user.name）时返回错误。
+func (r Repo) Ident(ctx context.Context) (string, error) {
+	res, err := r.R.Query(ctx, exec.Cmd{Name: "git", Args: []string{"var", "GIT_AUTHOR_IDENT"}, Dir: r.Dir})
+	if err != nil {
+		return "", err
+	}
+	s := strings.TrimSpace(string(res.Stdout))
+	if i := strings.LastIndex(s, ">"); i >= 0 {
+		s = s[:i+1] // 去掉末尾的时间戳与时区
+	}
+	return s, nil
+}
+
 // ---------- 写操作 ----------
 
 func (r Repo) run(ctx context.Context, args ...string) error {

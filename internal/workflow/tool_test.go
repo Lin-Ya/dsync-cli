@@ -292,3 +292,27 @@ func TestToolAdd_I_DryRunWithoutLockfile(t *testing.T) {
 		t.Error("dry-run 不得写入 lockfile")
 	}
 }
+
+// noGitIdentity 去掉 fixture 仓库的 git 身份（环境变量也清掉，避免继承开发机设置）。
+func (tf *toolFixture) noGitIdentity(t *testing.T) {
+	t.Helper()
+	for _, k := range []string{"GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"} {
+		t.Setenv(k, "")
+		os.Unsetenv(k)
+	}
+	tf.git(t, "config", "--unset", "user.name")
+	tf.git(t, "config", "--unset", "user.email")
+}
+
+// 场景 J：没有 git 身份时在改动任何文件之前失败，而不是做完全部步骤后提交失败。
+func TestToolAdd_J_NoIdentityFailsBeforeChanges(t *testing.T) {
+	tf := newToolFixture(t)
+	tf.noGitIdentity(t)
+	err := tf.Env().ToolAdd(context.Background(), ToolAddOptions{Specs: []string{"node@24"}})
+	if err != errNoGitIdentity {
+		t.Fatalf("应报 git 身份未配置: %v", err)
+	}
+	if tf.called("mise use") || tf.src(t, "config.toml.tmpl") != baseConfig {
+		t.Errorf("不应改动源文件: %v", tf.rec.Lines())
+	}
+}

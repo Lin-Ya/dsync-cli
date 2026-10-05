@@ -71,10 +71,11 @@ func (e Env) Init(ctx context.Context, o InitOptions) error {
 
 	c.Local.Geo = string(geo)
 	c.Local.Repo.Path = repo.Root
+	e.logf("[3/6] 本机配置 %s（geo = %s）", c.Paths.LocalFile(), geo)
+	e.initUser(ctx, &c.Local.User)
 	if err := config.SaveLocal(c.Paths, c.Local, e.writeFile); err != nil {
 		return err
 	}
-	e.logf("[3/6] 本机配置 %s（geo = %s）", c.Paths.LocalFile(), geo)
 
 	e.logf("[4/6] chezmoi 配置 + apply")
 	if repo.Layout == LayoutV1 { // v2 的 chezmoi 配置自带 sourceDir，无需软链
@@ -102,6 +103,9 @@ func (e Env) Init(ctx context.Context, o InitOptions) error {
 	e.logf(">>> 初始化完成。下一步：")
 	e.logf("    exec zsh                      # 进入新 shell 使配置生效")
 	e.logf("    dsync status                  # 查看同步状态")
+	if c.Local.User.Name == "" || c.Local.User.Email == "" {
+		e.logf("    # 在 %s 的 [user] 填写 name / email 后 dsync sync（提交 dsync 仓库需要）", c.Paths.LocalFile())
+	}
 	e.logf("    atuin login                   # （可选）同步 shell 历史")
 	return nil
 }
@@ -116,6 +120,44 @@ func (e Env) initGeo(flag string, l config.Local) (mirrors.Geo, error) {
 		}
 	}
 	return mirrors.Default, nil
+}
+
+// initUser 补全 local.toml 中的 git 身份：已有值 > 本机 git 全局配置 > 交互输入。
+// 必须在 chezmoi apply 之前：受管理的 ~/.gitconfig 按 .dsync.user 渲染，
+// 不先导入本机已有的身份，apply 后它就丢了，之后 capture / tool add / save 都无法提交。
+func (e Env) initUser(ctx context.Context, u *config.User) {
+	if u.Name == "" {
+		u.Name = e.gitGlobal(ctx, "user.name")
+	}
+	if u.Email == "" {
+		u.Email = e.gitGlobal(ctx, "user.email")
+	}
+	if (u.Name == "" || u.Email == "") && e.Prompt != nil {
+		e.logf("  设置 git 身份（提交 dsync 仓库时使用，写入 local.toml；直接回车跳过）")
+		if u.Name == "" {
+			u.Name = e.Prompt("  user.name: ")
+		}
+		if u.Email == "" {
+			u.Email = e.Prompt("  user.email: ")
+		}
+	}
+	if u.Name != "" && u.Email != "" {
+		e.logf("  git 身份: %s <%s>", u.Name, u.Email)
+	} else {
+		e.logf("  （未设置 git 身份：capture / tool add / save 将无法提交）")
+	}
+}
+
+// gitGlobal 读取 git 全局配置项；未设置或没有 git 时返回空串。
+func (e Env) gitGlobal(ctx context.Context, key string) string {
+	if !e.has("git") {
+		return ""
+	}
+	res, err := e.Runner.Query(ctx, exec.Cmd{Name: "git", Args: []string{"config", "--global", "--get", key}})
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(res.Stdout))
 }
 
 // ensurePath 让本进程后续调用能找到装进 ~/.local/bin 的工具。

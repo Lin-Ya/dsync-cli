@@ -3,11 +3,13 @@
 package cli
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -25,7 +27,6 @@ type ExitError struct{ Code int }
 func (e ExitError) Error() string { return fmt.Sprintf("退出码 %d", e.Code) }
 
 type globalFlags struct {
-	json   bool
 	dryRun bool
 }
 
@@ -41,8 +42,11 @@ func New(env workflow.Env) *cobra.Command {
 	}
 	root.SetVersionTemplate("dsync {{.Version}}\n")
 	root.Flags().BoolP("version", "v", false, "显示版本")
-	root.PersistentFlags().BoolVar(&g.json, "json", false, "以 JSON 输出（供脚本 / CI 使用）")
 	root.PersistentFlags().BoolVar(&g.dryRun, "dry-run", false, "只打印将执行的写操作，不实际执行")
+	// 未知 flag（如不支持 --json 的命令）时与参数错误一样附上用法
+	root.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
+		return fmt.Errorf("%v\n用法: %s\n详见: %s --help", err, cmd.UseLine(), cmd.CommandPath())
+	})
 	root.SetOut(env.Out)
 	root.SetErr(env.Err)
 
@@ -84,7 +88,7 @@ func New(env workflow.Env) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				if g.json {
+				if jsonOut(cmd) {
 					return workflow.WriteJSON(cmd.OutOrStdout(), r)
 				}
 				r.WriteText(cmd.OutOrStdout())
@@ -100,7 +104,7 @@ func New(env workflow.Env) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				if g.json {
+				if jsonOut(cmd) {
 					err = workflow.WriteJSON(cmd.OutOrStdout(), r)
 				} else {
 					r.WriteText(cmd.OutOrStdout())
@@ -113,6 +117,16 @@ func New(env workflow.Env) *cobra.Command {
 		},
 	)
 	root.AddCommand(writeCommands(envFor)...)
+
+	// --json 只加在有结构化输出的命令上：其它命令传 --json 会报未知 flag，而不是被静默忽略
+	for _, path := range [][]string{{"status"}, {"doctor"}, {"verify"}, {"provision"}, {"host", "setup"}} {
+		c, _, _ := root.Find(path)
+		usage := "以 JSON 输出（供脚本 / CI 使用）"
+		if c.Flags().Lookup("check") != nil {
+			usage = "以 JSON 输出计划（需与 --check 一起使用）"
+		}
+		c.Flags().Bool("json", false, usage)
+	}
 
 	// 帮助中按使用场景分组
 	root.AddGroup(
@@ -360,13 +374,23 @@ func Main(ctx context.Context, env workflow.Env, args []string) int {
 	return 2
 }
 
-// DefaultEnv 基于真实进程环境构造 Env。
+// DefaultEnv 基于真实进程环境构造 Env。stdin 是终端时才允许提问
+// （install.sh 经 curl | sh 执行 dsync init 时 stdin 是管道，不能读）。
 func DefaultEnv(out, errOut io.Writer) workflow.Env {
-	return workflow.Env{
+	env := workflow.Env{
 		Getenv: os.Getenv,
 		Runner: exec.Real{},
 		RootFS: os.DirFS("/"),
 		Out:    out,
 		Err:    errOut,
 	}
+	if st, err := os.Stdin.Stat(); err == nil && st.Mode()&os.ModeCharDevice != 0 {
+		in := bufio.NewReader(os.Stdin)
+		env.Prompt = func(q string) string {
+			fmt.Fprint(out, q)
+			s, _ := in.ReadString('\n')
+			return strings.TrimSpace(s)
+		}
+	}
+	return env
 }

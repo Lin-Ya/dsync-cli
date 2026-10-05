@@ -97,6 +97,11 @@ func (e Env) Doctor(ctx context.Context) (DoctorReport, error) {
 			add("dsync.toml", Fail, err.Error(), "")
 		}
 		if e.has("git") {
+			if id, err := (gitrepo.Repo{R: e.Runner, Dir: repo.Root}).Ident(ctx); err != nil {
+				add("git identity", Warn, "未配置，capture / tool add / save 无法提交", "在 local.toml 的 [user] 填写 name / email 后 dsync sync")
+			} else {
+				add("git identity", OK, id, "")
+			}
 			if gs, err := (gitrepo.Repo{R: e.Runner, Dir: repo.Root}).Status(ctx); err != nil {
 				add("git", Warn, err.Error(), "")
 			} else if gs.Upstream == "" {

@@ -230,10 +230,14 @@ func TestDoctor_Healthy(t *testing.T) {
 	setupV2Repo(t, f)
 	f.rec.OnStdout("git --version", "git version 2.43.0\n").
 		OnStdout("mise --version", "2026.9.0\n").
-		OnStdout("chezmoi --version", "chezmoi version v2.72.1\n")
+		OnStdout("chezmoi --version", "chezmoi version v2.72.1\n").
+		OnStdout("git var GIT_AUTHOR_IDENT", "Me <me@example.com> 1791204907 +0800\n")
 	d, err := f.Env().Doctor(context.Background())
 	if err != nil {
 		t.Fatal(err)
+	}
+	if c := find(d, "git identity"); c.Level != OK || c.Detail != "Me <me@example.com>" {
+		t.Errorf("git identity: %+v", c)
 	}
 	if d.Failed() {
 		t.Errorf("不应有 fail 项: %+v", d.Checks)
@@ -300,4 +304,13 @@ func TestStatus_EmptyListsAreArraysInJSON(t *testing.T) {
 			t.Errorf("%s 应输出为 []:\n%s", k, buf.String())
 		}
 	}
+}
+
+func find(d DoctorReport, name string) Check {
+	for _, c := range d.Checks {
+		if c.Name == name {
+			return c
+		}
+	}
+	return Check{}
 }

@@ -30,6 +30,8 @@ type Env struct {
 	GOOS string
 	// HTTP 用于下载（nil = deps.NewHTTPClient：带超时，沿用 http(s)_proxy 环境变量）。
 	HTTP *http.Client
+	// Prompt 向用户提问并返回输入（已去除首尾空白）；nil = 非交互（stdin 不是终端），不提问。
+	Prompt func(question string) string
 }
 
 // Context 是解析后的本机上下文（多个命令共用）。

@@ -47,6 +47,9 @@ func (e Env) ToolAdd(ctx context.Context, o ToolAddOptions) error {
 		return err
 	}
 	git := gitrepo.Repo{R: e.Runner, Dir: repo.Root}
+	if err := e.requireGitIdentity(ctx, git); err != nil { // 先于改动：避免做完全部步骤才在提交时失败
+		return err
+	}
 	specs := strings.Join(o.Specs, " ")
 
 	e.logf("[1/5] 同步仓库（%s）", repo.Root)
@@ -169,8 +172,11 @@ func (e Env) commitAndPush(ctx context.Context, git gitrepo.Repo, paths []string
 	if len(staged) == 0 && !e.DryRun {
 		e.logf("  （没有需要提交的改动）")
 	} else {
+		if err := e.requireGitIdentity(ctx, git); err != nil {
+			return err
+		}
 		if err := git.Commit(ctx, msg); err != nil {
-			return fmt.Errorf("提交失败（git 身份未配置？在 ~/.config/dsync/local.toml 的 [user] 填写 name / email 后 dsync sync，或 git config --global user.name / user.email）: %w", err)
+			return fmt.Errorf("提交失败: %w", err)
 		}
 		if !e.DryRun {
 			e.logf("  已提交: %s", msg)
@@ -184,6 +190,18 @@ func (e Env) commitAndPush(ctx context.Context, git gitrepo.Repo, paths []string
 		return fmt.Errorf("推送失败（未配置远端 / 认证 / 网络），处理后执行 dsync save 重试: %w", err)
 	}
 	e.logf(">>> 已推送。其它机器执行 dsync sync 即可同步")
+	return nil
+}
+
+// errNoGitIdentity 指向 local.toml：starter 模板的 ~/.gitconfig 从其 [user] 渲染身份。
+var errNoGitIdentity = errors.New("git 身份未配置，无法提交：在 ~/.config/dsync/local.toml 的 [user] 填写 name / email 后执行 dsync sync" +
+	"（部署到 ~/.gitconfig），或 git config --global user.name / user.email")
+
+// requireGitIdentity 确认仓库中可以提交（身份可用）。
+func (e Env) requireGitIdentity(ctx context.Context, git gitrepo.Repo) error {
+	if _, err := git.Ident(ctx); err != nil {
+		return errNoGitIdentity
+	}
 	return nil
 }
 
