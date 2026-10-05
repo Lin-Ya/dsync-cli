@@ -86,6 +86,16 @@ func TestSelfUpdate(t *testing.T) {
 	if b, _ := os.ReadFile(target); string(b) != "new-binary" {
 		t.Error("--force 应重新安装")
 	}
+
+	// --dry-run：照常下载并校验，但不替换
+	os.WriteFile(target, []byte("old-binary"), 0o755)
+	e.DryRun = true
+	if err := e.SelfUpdate(ctx, "v2.0.0-alpha.1", SelfUpdateOptions{Target: target}); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(target); string(b) != "old-binary" || !strings.Contains(f.err.String(), "[dry-run] 用 v2.0.0-alpha.2（已校验）替换") {
+		t.Errorf("dry-run 不应替换: %q\n%s", b, f.err.String())
+	}
 }
 
 func TestGithubToken_FallsBackToGh(t *testing.T) {

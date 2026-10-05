@@ -362,6 +362,24 @@ func TestDocker_EnablesIntegrationPreservingOtherKeys(t *testing.T) {
 	}
 }
 
+// dry-run 不得改动 Docker Desktop 的设置文件，也不建备份。
+func TestDocker_DryRunWritesNothing(t *testing.T) {
+	f, p := dockerFixture(t, dockerSettings)
+	f.x.DryRun = true
+	if err := (dockerStep{}).Apply(context.Background(), f.x); err != nil {
+		t.Fatal(err)
+	}
+	if readFile(t, p) != dockerSettings {
+		t.Error("dry-run 不应修改设置文件")
+	}
+	if _, err := os.Stat(p + ".bak.dsync"); err == nil {
+		t.Error("dry-run 不应创建备份")
+	}
+	if !strings.Contains(strings.Join(f.logs, "\n"), "[dry-run]") {
+		t.Errorf("应打印将写入的文件: %v", f.logs)
+	}
+}
+
 func TestDocker_LegacyAndManualCases(t *testing.T) {
 	f, _ := dockerFixture(t, "")
 	write(t, filepath.Join(f.env["APPDATA"], "Docker", "settings.json"), `{"wslEngineEnabled": false, "integratedWslDistros": ["Ubuntu-24.04"]}`)

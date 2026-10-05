@@ -34,9 +34,14 @@ jobs:
       - name: go vet
         run: go vet ./...
       - name: go test
-        run: go test -race -count=1 -coverprofile=coverage.out ./...
-      - name: 覆盖率
-        run: go tool cover -func=coverage.out | tail -1
+        # -coverpkg=./...：被其它包的测试执行到的代码也计入（如 workflow 测试经 gitrepo 真实提交 / 推送），
+        # 否则这些代码按"本包测试覆盖"统计为 0%，总数被低估约 5 个百分点
+        run: go test -race -count=1 -coverpkg=./... -coverprofile=coverage.out ./...
+      - name: 覆盖率（下限 80%，只防大幅回退；不为数字补测透传错误分支）
+        run: |
+          total=$(go tool cover -func=coverage.out | awk '/^total:/ { sub(/%/, "", $NF); print $NF }')
+          echo "总覆盖率 ${total}%"
+          awk -v t="$total" 'BEGIN { exit !(t >= 80) }' || { echo "::error::覆盖率 ${total}% 低于 80%"; exit 1; }
 
   # ---------------------------------------------------------------------------
   # Windows：host 包（宿主步骤）与 install.ps1（真实 powershell.exe + 模拟 GitHub API）
