@@ -36,16 +36,19 @@ dsync host setup [<仓库地址> | --source <Windows 目录>] [--wsl-install-dir
 # 写操作（均支持 --dry-run：只读查询照常执行，写操作只打印）
 dsync sync                       # git pull --rebase --autostash → chezmoi apply → provision → mise install --locked
 dsync provision [--check] [--only apt,chsh]   # 系统级步骤：apt / wsl-ssh-agent / homebrew / ohmyzsh / chsh / docker-check
-dsync geo set cn|official        # 写 local.toml → 重新生成 chezmoi 配置 → apply（修复 v1 switch-geo）
+dsync geo set cn|official        # 写 local.toml → 重新生成 chezmoi 配置 → apply（修复 v1 switch-geo）；dsync geo 查看当前值
 dsync tool add <spec>... [--push]   # mise 直接编辑仓库源（保留注释）→ apply → lock → 写回 lockfile → 提交
+dsync tool remove <tool>... [--push] # 同上，mise unuse（不卸载已安装版本）
+dsync config set <键> <值>...    # 改 local.toml（git 身份 / 标签 / 代理…）；注入模板的项立即重新部署；config unset / show
 dsync capture <file>... [--no-commit] [--push]   # 本机改动写回源：非模板 re-add；无变量模板直接写回；含变量模板拒绝
-dsync save [-m msg] [--no-push]  # 提交全部改动并推送（默认推送）
+dsync save [-m msg] [--no-push]  # 提交全部改动并推送（默认推送；无 origin 时按 dsync.toml [remote].url 添加）
 
 # 只读
 dsync shell-init zsh     # 输出镜像 env / 代理 / WSL ssh-agent 桥接；用法: eval "$(dsync shell-init zsh)"
-dsync status [--json]    # 平台、geo 来源、仓库 ahead/behind/dirty、chezmoi 漂移、mise 缺失工具
+dsync status [--json]    # 平台、geo 来源、仓库 ahead/behind/dirty、chezmoi 漂移与待部署配置、mise 缺失工具
 dsync doctor [--json]    # 只读诊断；存在 fail 项时退出码 1
 dsync verify [--source <仓库>] [--json]   # 校验 dsync.toml，按 linux/darwin × cn/official 渲染全部模板（dotfiles 仓库 CI 使用）
+# --json 只用于以上三条与 provision --check / host setup --check，须写在子命令之后
 dsync version             # 或 dsync --version
 ```
 

@@ -19,14 +19,34 @@ type ToolAddOptions struct {
 }
 
 // ToolAdd 新增/升级 mise 全局工具并同步回仓库（取代 v1 dsync add）。
-//
-// 与 v1 的区别：先改源、再部署。由 mise 直接编辑仓库中的源文件（保留注释），
-// 然后 chezmoi apply 部署到 ~/.config/mise/config.toml，不再把部署产物 cp 回模板。
-// 源文件是 .tmpl 时（mise 不认该扩展名），在同名临时副本上编辑后写回。
 func (e Env) ToolAdd(ctx context.Context, o ToolAddOptions) error {
 	if len(o.Specs) == 0 {
 		return errors.New("缺少工具 spec（例如 node@22.11.0 或 npm:typescript@5.6.2）")
 	}
+	return e.editTools(ctx, "use", "add", o.Specs, o.Push)
+}
+
+// ToolRemoveOptions 是 `dsync tool remove` 的参数。
+type ToolRemoveOptions struct {
+	Tools []string
+	Push  bool
+}
+
+// ToolRemove 从 mise 全局工具清单中移除工具并同步回仓库。
+// 已安装的版本不会卸载（mise prune 清理），其它机器 sync 后同样只是不再安装它。
+func (e Env) ToolRemove(ctx context.Context, o ToolRemoveOptions) error {
+	if len(o.Tools) == 0 {
+		return errors.New("缺少工具名（例如 jq 或 npm:typescript）")
+	}
+	return e.editTools(ctx, "unuse", "remove", o.Tools, o.Push)
+}
+
+// editTools 是 tool add / remove 的共同流程：拉取 → mise use|unuse 编辑仓库源 → 部署 → lock → 提交。
+//
+// 与 v1 的区别：先改源、再部署。由 mise 直接编辑仓库中的源文件（保留注释），
+// 然后 chezmoi apply 部署到 ~/.config/mise/config.toml，不再把部署产物 cp 回模板。
+// 源文件是 .tmpl 时（mise 不认该扩展名），在同名临时副本上编辑后写回。
+func (e Env) editTools(ctx context.Context, verb, action string, args []string, push bool) error {
 	c, err := e.Load()
 	if err != nil {
 		return err
@@ -51,16 +71,24 @@ func (e Env) ToolAdd(ctx context.Context, o ToolAddOptions) error {
 	if err := e.requireGitIdentity(ctx, git); err != nil { // 先于改动：避免做完全部步骤才在提交时失败
 		return err
 	}
-	specs := strings.Join(o.Specs, " ")
+	specs := strings.Join(args, " ")
 
 	e.logf("[1/5] 同步仓库（%s）", repo.Root)
 	if err := e.pullIfTracking(ctx, git); err != nil {
 		return err
 	}
 
-	e.logf("[2/5] mise use %s（编辑源文件 %s）", specs, rel(repo.Root, src))
-	if err := e.miseUseOnSource(ctx, src, o.Specs); err != nil {
+	e.logf("[2/5] mise %s %s（编辑源文件 %s）", verb, specs, rel(repo.Root, src))
+	before, err := os.ReadFile(src)
+	if err != nil {
 		return err
+	}
+	if err := e.miseEditSource(ctx, src, verb, args); err != nil {
+		return err
+	}
+	if after, _ := os.ReadFile(src); !e.DryRun && verb == "unuse" && string(after) == string(before) {
+		// mise unuse 对不存在的工具静默成功：此时继续只会产生空操作，直接报出
+		return fmt.Errorf("%s 中没有 %s（dsync status 或 mise ls --global 查看已有工具）", rel(repo.Root, src), specs)
 	}
 
 	target := filepath.Join(c.Paths.Home, ".config", "mise", "config.toml")
@@ -78,7 +106,7 @@ func (e Env) ToolAdd(ctx context.Context, o ToolAddOptions) error {
 	}
 
 	e.logf("[5/5] 提交")
-	return e.commitAndPush(ctx, git, []string{rel(repo.Root, srcDir)}, "chore(mise): add "+specs, o.Push)
+	return e.commitAndPush(ctx, git, []string{rel(repo.Root, srcDir)}, "chore(mise): "+action+" "+specs, push)
 }
 
 // miseConfigSource 返回 mise 全局配置的源文件；拒绝重复条目与含模板变量的模板。
@@ -117,10 +145,14 @@ func miseLockSource(dir string) (string, error) {
 	return priv, nil
 }
 
-// miseUseOnSource 让 mise 编辑源文件；.tmpl 源在临时副本 config.toml 上编辑后写回。
-func (e Env) miseUseOnSource(ctx context.Context, src string, specs []string) error {
+// miseEditSource 让 mise 编辑源文件（verb = use | unuse）；.tmpl 源在临时副本 config.toml 上编辑后写回。
+func (e Env) miseEditSource(ctx context.Context, src, verb string, args []string) error {
+	run := e.mise().Use
+	if verb == "unuse" {
+		run = e.mise().Unuse
+	}
 	if !strings.HasSuffix(src, ".tmpl") {
-		return e.mise().Use(ctx, src, specs...)
+		return run(ctx, src, args...)
 	}
 	tmp, err := os.MkdirTemp("", "dsync-mise-")
 	if err != nil {
@@ -135,7 +167,7 @@ func (e Env) miseUseOnSource(ctx context.Context, src string, specs []string) er
 	if err := os.WriteFile(work, b, 0o644); err != nil {
 		return err
 	}
-	if err := e.mise().Use(ctx, work, specs...); err != nil {
+	if err := run(ctx, work, args...); err != nil {
 		return err
 	}
 	edited, err := os.ReadFile(work)

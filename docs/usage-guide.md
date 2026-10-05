@@ -10,10 +10,10 @@ dsync 自己不保存任何配置，它只编排三样东西：
 | 是什么 | 在哪里 | 是否多机共享 | 怎么改 |
 |---|---|---|---|
 | **dotfiles 仓库**：配置文件源（chezmoi）+ 工具清单（mise）+ `dsync.toml` | 默认 `~/.local/share/dsync/repo`（`dsync status` 的"仓库"行显示实际位置） | 是（git） | `dsync tool add` / `dsync capture` / 直接编辑后 `dsync save` |
-| **本机配置** `local.toml`：geo、代理、git 身份、机器标签、仓库位置 | `~/.config/dsync/local.toml` | 否（不入库） | 手工编辑（geo 用 `dsync geo set`），见[第 6 节](#6-本机配置-localtoml) |
+| **本机配置** `local.toml`：geo、代理、git 身份、机器标签、仓库位置 | `~/.config/dsync/local.toml` | 否（不入库） | `dsync config set`（geo 用 `dsync geo set`），见[第 6 节](#6-本机配置-localtoml) |
 | **部署结果**：`~/.zshrc`、`~/.npmrc`、已安装的工具… | `$HOME` 下 | 否 | 不要直接当作"真相"——改完要写回仓库，否则下次 `sync` 会提示覆盖 |
 
-数据只有一个方向是自动的：**仓库 → 本机**（`dsync sync`）。反方向（本机 → 仓库）必须显式执行 `capture` / `tool add` / `save`。
+数据只有一个方向是自动的：**仓库 → 本机**（`dsync sync`）。反方向（本机 → 仓库）必须显式执行 `capture` / `tool add` / `tool remove` / `save`。
 
 ## 2. 安装
 
@@ -58,13 +58,13 @@ dsync init --create [--github you/dotfiles]      # 还没有仓库：用内置 s
 
 想先看会做什么：`dsync --dry-run init <仓库地址>`。国内镜像不可用时加 `--geo official`。
 
-**git 身份**：`capture` / `tool add` / `save` 需要提交 dotfiles 仓库。第 3 步按以下顺序补全 `local.toml` 的 `[user]`：已有值 → 本机 `git config --global` 中的身份（在 `~/.gitconfig` 被受管理的版本覆盖之前导入）→ 在终端中提问（直接回车跳过；经 `curl | sh` 执行等非交互场景不提问）。仍未设置时，`init` 结束时会提示，之后可手工补上并 `dsync sync`：
+**git 身份**：`capture` / `tool add` / `save` 需要提交 dotfiles 仓库。第 3 步按以下顺序补全 `local.toml` 的 `[user]`：已有值 → 本机 `git config --global` 中的身份（在 `~/.gitconfig` 被受管理的版本覆盖之前导入）→ 在终端中提问（直接回车跳过；经 `curl | sh` 执行等非交互场景不提问）。仍未设置时，`init` 结束时会提示，之后补上即可（立即生效，无需 `dsync sync`）：
 
-```toml
-[user]
-name = 'Your Name'
-email = 'you@example.com'
+```bash
+dsync config set user.name 'Your Name' user.email you@example.com
 ```
+
+也可以在 `init` **之前**先执行这条命令：没有仓库时它只保存，`init` 会直接使用。
 
 **部署后**
 
@@ -73,14 +73,16 @@ exec zsh          # 进入新 shell，让 ~/.zshenv 中的 dsync shell-init 生�
 dsync status      # 确认：配置已同步、工具全部已安装、无待执行的系统步骤
 ```
 
-需要代理的话在 `local.toml` 加上 `[proxy]`（见[第 6 节](#6-本机配置-localtoml)）。
+需要长期使用代理：`dsync config set proxy.http 'http://${WSL_HOST_IP}:7890' proxy.https 'http://${WSL_HOST_IP}:7890'`（见[第 6 节](#6-本机配置-localtoml)）。
 
-用 `--create` 且没带 `--github` 时，仓库只在本地。要让其它机器能同步，在 GitHub 新建一个空的私有仓库后：
+用 `--create` 且没带 `--github` 时，仓库只在本地。要让其它机器能同步，在 GitHub 新建一个空的私有仓库，把地址写进仓库根目录 `dsync.toml` 的 `[remote]`：
 
-```bash
-git -C ~/.local/share/dsync/repo remote add origin <地址>
-dsync save
+```toml
+[remote]
+url = "git@github.com:you/dotfiles.git"
 ```
+
+然后 `dsync save`：仓库没有 `origin` 时按这个地址添加，首次推送并建立跟踪。
 
 ## 4. 日常使用
 
@@ -89,10 +91,12 @@ dsync save
 | 把其它机器的改动同步到本机 | `dsync sync` |
 | 看本机和仓库差在哪 | `dsync status` |
 | 新增 / 升级一个工具 | `dsync tool add node@22.11.0` |
+| 移除一个工具 | `dsync tool remove jq` |
 | 把本机改过的配置文件写回仓库 | `dsync capture ~/.zshrc` |
 | 让一个新文件受管理 | `chezmoi add ~/.config/foo/config.toml`，然后 `dsync save` |
 | 提交并推送仓库里的全部改动 | `dsync save` |
-| 切换国内镜像 / 官方源 | `dsync geo set cn` / `dsync geo set official` |
+| 查看 / 切换镜像源 | `dsync geo` / `dsync geo set cn`、`dsync geo set official` |
+| 改 git 身份、代理、机器标签 | `dsync config set <键> <值>`（查看：`dsync config show`） |
 | 补跑系统级安装步骤 | `dsync provision` |
 | 排查环境问题 | `dsync doctor` |
 
@@ -106,16 +110,18 @@ dsync save
 - `mise install --locked` 失败说明 lockfile 与工具清单不一致（不会静默退化为无锁安装）：在任一台机器上 `mise lock --global`，再 `dsync capture ~/.config/mise/mise.lock && dsync save`。
 - 仓库还没有 lockfile 时按配置普通安装；第一次 `dsync tool add` 会生成它。
 
-### 4.2 工具：`dsync tool add <工具>[@<版本>]...`
+### 4.2 工具：`dsync tool add` / `dsync tool remove`
 
 ```bash
 dsync tool add node@22.11.0
 dsync tool add npm:typescript@5.6.2 jq@1.7.1 --push
+dsync tool remove jq             # 别名 dsync tool rm
 ```
 
-先拉取仓库 → 由 mise 编辑仓库里的工具清单（注释保留）并安装 → 部署到 `~/.config/mise/config.toml` → 更新 lockfile → 提交。默认**只提交不推送**，加 `--push` 或之后 `dsync save`。
+先拉取仓库 → 由 mise 编辑仓库里的工具清单（注释保留；add 同时安装）→ 部署到 `~/.config/mise/config.toml` → 更新 lockfile → 提交（信息为 `chore(mise): add …` / `chore(mise): remove …`）。默认**只提交不推送**，加 `--push` 或之后 `dsync save`。
 
-目前没有删除命令：在仓库的 `home/dot_config/mise/config.toml` 中删掉对应行，`chezmoi apply` 后 `dsync save`。
+- `remove` 只写工具名，不带版本。清单里没有该工具时直接报错，不会产生空提交。
+- `remove` 不卸载已安装的版本（项目里可能还在用）；需要清理时执行 `mise prune`。其它机器 `dsync sync` 后同样只是不再安装它。
 
 ### 4.3 改配置文件
 
@@ -133,11 +139,13 @@ dsync tool add npm:typescript@5.6.2 jq@1.7.1 --push
 
 `git add -A` → 提交（默认信息 `chore: dsync save (<主机名>)`，`-m` 自定义）→ 推送；`dsync.toml` 的 `[remote].mirrors` 中列出的镜像仓库也会一并推送。`--no-push` 只提交。
 
+推送规则（`capture --push`、`tool add/remove --push` 相同）：仓库没有 `origin` 而 `dsync.toml` 设置了 `[remote].url` 时先按它添加 `origin`；当前分支没有上游时推送到 `origin` 并建立跟踪。没有需要提交的改动时也会把之前未推送的提交推上去。
+
 `capture` 和 `tool add` 默认不推送，所以一个常见节奏是：改几处 → 最后 `dsync save` 一次推上去 → 其它机器 `dsync sync`。
 
-### 4.5 镜像源：`dsync geo set cn|official`
+### 4.5 镜像源：`dsync geo` / `dsync geo set cn|official`
 
-写入 `local.toml` → 重新生成 chezmoi 配置 → `chezmoi apply`，于是 `.npmrc`、cargo 配置等渲染型文件一起切换。环境变量（`NPM_CONFIG_REGISTRY`、`PIP_INDEX_URL` 等）由 `shell-init` 在开 shell 时导出，**切换后需要 `exec zsh` 或新开终端**。
+`dsync geo` 显示当前镜像源及其来源。`dsync geo set` 写入 `local.toml` → 重新生成 chezmoi 配置 → `chezmoi apply`，于是 `.npmrc`、cargo 配置等渲染型文件一起切换。环境变量（`NPM_CONFIG_REGISTRY`、`PIP_INDEX_URL` 等）由 `shell-init` 在开 shell 时导出，**切换后需要 `exec zsh` 或新开终端**。
 
 不要手改 `local.toml` 里的 `geo`：那样只有环境变量会变，渲染型文件要等下次 `sync`。
 
@@ -178,10 +186,11 @@ git     main → origin/main  ↑1 未推送  2 个未提交改动
 系统    待执行: ohmyzsh（dsync provision）
 ```
 
+- 手工改了 `local.toml` / `dsync.toml`（或拉取到别人改的 `dsync.toml`）但还没部署时，"配置"行显示 `local.toml / dsync.toml / geo 有改动尚未部署 → dsync sync`（JSON 中为 `"config_stale": true`）。
 - "配置"行的两列代码来自 `chezmoi status`：`A` 新增、`M` 修改、`D` 删除。首列非空 = 你在本机改过它；只有次列 = 仓库有更新尚未部署。
 - git 行：`↑ 未推送` / `未提交改动` → `dsync save`；`↓ 待拉取` → `dsync sync`（以上次 fetch 为准）。
 
-**`dsync doctor`**——逐项检查底座工具、`local.toml`、仓库、git 身份与远端、工具安装、ssh-agent、docker，`[WARN]` / `[FAIL]` 项下方的 `→` 是处理办法。有 `[FAIL]` 时退出码为 1。
+**`dsync doctor`**——逐项检查底座工具、`local.toml`、仓库、git 身份、上游与 `[remote].url`、工具安装、ssh-agent、docker，`[WARN]` / `[FAIL]` 项下方的 `→` 是处理办法。有 `[FAIL]` 时退出码为 1。
 
 **机器可读输出**：`status`、`doctor`、`verify`、`provision --check`、`host setup --check` 支持 `--json`，须写在子命令之后（`dsync status --json`）；其它命令传 `--json` 会报错。反馈问题时请附上这几条的输出和 `dsync version`。
 
@@ -189,7 +198,19 @@ git     main → origin/main  ↑1 未推送  2 个未提交改动
 
 ## 6. 本机配置 `local.toml`
 
-`~/.config/dsync/local.toml`，不入库，每台机器一份。`init` / `geo set` 会重写它（手写注释不会保留）；出现未知配置项会报错。
+`~/.config/dsync/local.toml`，不入库，每台机器一份。推荐用命令修改，而不是手工编辑：
+
+```bash
+dsync config show                                              # 文件位置与各项当前值
+dsync config set user.name 'Your Name' user.email you@example.com
+dsync config set tags work,laptop                              # 逗号分隔
+dsync config set proxy.http 'http://${WSL_HOST_IP}:7890' proxy.https 'http://${WSL_HOST_IP}:7890'
+dsync config unset proxy.http proxy.https                      # proxy.* 全部清除后即不再设置代理
+```
+
+可用的键：`user.name` `user.email` `tags` `proxy.http` `proxy.https` `proxy.all` `proxy.no_proxy` `repo.path`（`repo.path` 会校验目标是 dotfiles 仓库）。`geo` 用 `dsync geo set`。一次可以改多项，任一项有误时不写入任何改动。
+
+`init` / `geo set` / `config set` 都会重写该文件，手写注释不会保留；出现未知配置项会报错。文件格式：
 
 ```toml
 geo = 'cn'                # cn | official；请用 dsync geo set 修改
@@ -214,11 +235,11 @@ no_proxy = 'localhost,127.0.0.1'
 
 **改完之后怎么生效**
 
-| 改了什么 | 生效方式 |
-|---|---|
-| `[proxy]` | 新开终端（`shell-init` 每次开 shell 读取） |
-| `[user]`、`tags` | `dsync sync`（重新生成 chezmoi 配置并部署）。注意：在此之前 `dsync status` 不会把它显示为"不一致" |
-| `geo` | 用 `dsync geo set` |
+| 改了什么 | 用 `dsync config set` | 手工编辑文件后 |
+|---|---|---|
+| `[user]`、`tags`（注入模板） | 立即重新生成 chezmoi 配置并 apply | `dsync sync`；在此之前 `dsync status` 会提示有改动尚未部署 |
+| `[proxy]` | 新开终端（`shell-init` 每次开 shell 读取） | 同左 |
+| `geo` | 不支持，用 `dsync geo set` | 不要手改：只有环境变量会变 |
 
 **geo 的优先级**：显式设置的环境变量 `DSYNC_GEO` > `local.toml` > v1 的 `~/.config/dsync/geo` > 默认 `cn`。（`shell-init` 自己导出的 `DSYNC_GEO` 不算显式设置；`dsync init` 例外：`--geo` > 已有 `local.toml` > 环境变量。）
 
@@ -230,6 +251,7 @@ no_proxy = 'localhost,127.0.0.1'
 version = 1                      # 必填，当前只支持 1
 
 [remote]
+url = "git@github.com:you/dotfiles.git"            # 仓库没有 origin 时推送前按它添加；doctor 检查 origin 是否一致
 mirrors = ["https://gitee.com/you/dotfiles.git"]   # dsync save 时一并推送
 
 [packages]
@@ -252,7 +274,8 @@ editor = "nvim"
 
 - `[provision].enable` 是白名单：**省略它就不会执行任何系统步骤**。不适用于当前平台的步骤自动跳过，所以可以把全部步骤都列上。
 - `[secrets]`：dsync 只负责把 `encryption = "age"`、公钥和私钥位置（`~/.config/chezmoi/keys.txt`）写进 chezmoi 配置。私钥不入库，每台机器自行放置（生成：`chezmoi age-keygen -o ~/.config/chezmoi/keys.txt`）；加密文件用 `chezmoi add --encrypt <文件>`。
-- `[remote].url` 与 `[deps]` 目前会被解析和校验，但尚无命令使用。
+- `[remote].url`：`doctor` 会对比 `origin`（同一仓库的 SSH / HTTPS 地址视为一致），不一致时告警。
+- `[deps]` 已废弃：mise / chezmoi 的版本随 dsync 固定（带 sha256 校验），这个表从未生效。为兼容旧仓库仍可解析，`dsync verify` 会告警，请删除。
 
 ## 8. 写模板
 
@@ -289,7 +312,7 @@ dsync verify            # 校验 dsync.toml，并按 linux/darwin × cn/official
 dsync verify --source . # 指定仓库目录（CI 中使用）
 ```
 
-引用了不存在的数据键会直接报错，可发现拼写错误。starter 模板自带的 GitHub Actions 工作流会在每次 push 时执行它（需在 dotfiles 仓库的 Secrets 中添加 `DSYNC_CLI_TOKEN`）。
+引用了不存在的数据键会直接报错，可发现拼写错误；`[WARN]` 项（如已废弃的 `[deps]`）不影响退出码。starter 模板自带的 GitHub Actions 工作流会在每次 push 时执行它（需在 dotfiles 仓库的 Secrets 中添加 `DSYNC_CLI_TOKEN`）。
 
 ## 9. Windows 宿主
 
@@ -334,8 +357,10 @@ dsync self-update --version v2.0.0   # 指定版本；--force 重新安装同一
 | 现象 | 原因与处理 |
 |---|---|
 | `找不到 dotfiles 仓库` | 这台机器还没部署：`dsync init <仓库地址>`（或 `--source` / `--create`） |
-| `git 身份未配置，无法提交` | 在 `local.toml` 的 `[user]` 填 name / email，`dsync sync` 后重试（命令在改动任何文件之前就会检查） |
-| `推送失败`，git 提示 `No configured push destination` | 仓库没有远端：`git -C <仓库> remote add origin <地址>` 后 `dsync save` |
+| `git 身份未配置，无法提交` | `dsync config set user.name '…' user.email …` 后重试（命令在改动任何文件之前就会检查） |
+| `推送失败`，git 提示 `'origin' does not appear to be a git repository` | 仓库没有远端：在 `dsync.toml` 的 `[remote]` 写 `url` 后 `dsync save`（或 `git -C <仓库> remote add origin <地址>`） |
+| `doctor` 报 `remote url` 不一致 | 按提示 `git remote set-url origin …`，或修改 `dsync.toml` 的 `[remote].url` |
+| `tool remove` 报"中没有 …" | 工具名写错，或该工具不在全局清单里：`dsync status` / `mise ls --global` 查看 |
 | `capture` 报"含模板变量，无法自动写回" | `chezmoi edit --apply <文件>` 手工改模板，然后 `dsync save` |
 | `capture` 报"未被 dsync 管理" | 新文件先 `chezmoi add <文件>`，然后 `dsync save` |
 | `geo set` 后环境变量还是旧的 | `exec zsh` 或新开终端 |
@@ -345,7 +370,7 @@ dsync self-update --version v2.0.0   # 指定版本；--force 重新安装同一
 | `sync` 时 chezmoi 询问是否覆盖 | 本机改过该文件：要保留就中止并 `dsync capture <文件>`，否则选择覆盖 |
 | WSL 里 `ssh-add -l` 没有密钥 | 见 [ssh-agent.md](ssh-agent.md) |
 | WSL 里找不到 `docker` | 见 [docker.md](docker.md) |
-| 改了 `local.toml` 后命令报"未知配置项" | 键名拼错或放错了表；按[第 6 节](#6-本机配置-localtoml)的示例修正 |
+| 改了 `local.toml` 后命令报"未知配置项" | 键名拼错或放错了表；按[第 6 节](#6-本机配置-localtoml)的示例修正，或改用 `dsync config set` |
 
 ## 12. 环境变量
 

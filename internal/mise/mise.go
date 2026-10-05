@@ -105,6 +105,18 @@ func (c Client) Use(ctx context.Context, configPath string, specs ...string) err
 	return err
 }
 
+// Unuse 从指定配置文件中移除工具（mise 自带 toml_edit，保留注释）。--no-prune：
+// 已安装的版本保留，交给 mise prune；配置中没有该工具时 mise 不报错、不改文件。
+func (c Client) Unuse(ctx context.Context, configPath string, tools ...string) error {
+	_, err := c.R.Run(ctx, exec.Cmd{
+		Name:        "mise",
+		Args:        append([]string{"unuse", "--no-prune", "--path", configPath}, tools...),
+		Env:         []string{"MISE_TRUSTED_CONFIG_PATHS=" + configPath},
+		Interactive: true,
+	})
+	return err
+}
+
 // InstallLocked 按 lockfile 安装全部工具（版本漂移即失败，不静默回退）。
 func (c Client) InstallLocked(ctx context.Context) error {
 	_, err := c.R.Run(ctx, exec.Cmd{Name: "mise", Args: []string{"install", "--locked"}, Interactive: true})

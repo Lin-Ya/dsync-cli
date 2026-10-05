@@ -318,3 +318,69 @@ func TestToolAdd_J_NoIdentityFailsBeforeChanges(t *testing.T) {
 		t.Errorf("不应改动源文件: %v", tf.rec.Lines())
 	}
 }
+
+// fakeUnuse：mise unuse --no-prune --path <file> <tool>...，删除对应行（不存在时不改文件，与真实 mise 一致）。
+func (tf *toolFixture) fakeUnuse() {
+	tf.rec.OnFunc("mise unuse --no-prune --path", func(c dexec.Cmd) dexec.Result {
+		path := c.Args[3]
+		b, _ := os.ReadFile(path)
+		var keep []string
+		for _, line := range strings.SplitAfter(string(b), "\n") {
+			drop := false
+			for _, name := range c.Args[4:] {
+				drop = drop || strings.HasPrefix(line, name+" =") || strings.HasPrefix(line, `"`+name+`" =`)
+			}
+			if !drop {
+				keep = append(keep, line)
+			}
+		}
+		os.WriteFile(path, []byte(strings.Join(keep, "")), 0o644)
+		return dexec.Result{}
+	})
+}
+
+// 场景 K：tool remove 与 add 同一流程——编辑源（注释保留）、部署、lock 写回、提交。
+func TestToolRemove_EditsSourceLocksAndCommits(t *testing.T) {
+	tf := newToolFixture(t)
+	tf.fakeUnuse()
+	if err := tf.Env().ToolRemove(context.Background(), ToolRemoveOptions{Tools: []string{"node"}}); err != nil {
+		t.Fatalf("%v\n%s", err, tf.out.String())
+	}
+	src := tf.src(t, "config.toml.tmpl")
+	if strings.Contains(src, "node") || !strings.Contains(src, "# mise 全局配置") {
+		t.Errorf("应删除 node 并保留注释:\n%s", src)
+	}
+	if tf.src(t, "private_mise.lock") != "lock-v1\n" {
+		t.Error("lockfile 应重新生成并写回")
+	}
+	if msg := tf.git(t, "log", "-1", "--format=%s"); msg != "chore(mise): remove node" {
+		t.Errorf("提交信息 = %q", msg)
+	}
+}
+
+// 场景 L：移除清单中没有的工具——mise 静默成功，dsync 应报错且不提交；dry-run 不改任何东西。
+func TestToolRemove_UnknownToolAndDryRun(t *testing.T) {
+	tf := newToolFixture(t)
+	tf.fakeUnuse()
+	head := tf.git(t, "rev-parse", "HEAD")
+	err := tf.Env().ToolRemove(context.Background(), ToolRemoveOptions{Tools: []string{"jq"}})
+	if err == nil || !strings.Contains(err.Error(), "中没有 jq") {
+		t.Errorf("应报工具不存在: %v", err)
+	}
+	if tf.git(t, "rev-parse", "HEAD") != head || tf.called("mise lock") {
+		t.Error("工具不存在时不应继续部署 / 提交")
+	}
+
+	e := tf.Env()
+	e.DryRun = true
+	e.Runner = dexec.DryRun{Inner: tf.rec, Out: &tf.err}
+	if err := e.ToolRemove(context.Background(), ToolRemoveOptions{Tools: []string{"node"}}); err != nil {
+		t.Fatal(err)
+	}
+	if tf.src(t, "config.toml.tmpl") != baseConfig || tf.git(t, "rev-parse", "HEAD") != head {
+		t.Error("dry-run 不得修改源文件或提交")
+	}
+	if !strings.Contains(tf.err.String(), "[dry-run] mise unuse --no-prune --path") {
+		t.Errorf("dry-run 应打印 mise unuse:\n%s", tf.err.String())
+	}
+}

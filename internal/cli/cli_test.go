@@ -48,6 +48,13 @@ func TestExitCodes(t *testing.T) {
 		{[]string{"doctor"}, 1, "[FAIL] git"}, // 伪环境里没有任何底座工具
 		{[]string{"no-such-command"}, 2, ""},
 		{[]string{"geo", "set", "mars"}, 2, ""},
+		{[]string{"geo"}, 0, "cn（来自 default）"},
+		{[]string{"geo", "mars"}, 2, ""},
+		{[]string{"tool", "remove"}, 2, ""},
+		{[]string{"config", "show"}, 0, "user.name"},
+		{[]string{"config", "set", "user.name"}, 2, ""}, // 键值须成对
+		{[]string{"config", "set", "geo", "cn"}, 2, ""},
+		{[]string{"config", "unset"}, 2, ""},
 		{[]string{"tool", "add"}, 2, ""},
 		{[]string{"capture"}, 2, ""},
 		{[]string{"sync"}, 2, ""}, // 伪环境缺少 git/chezmoi/mise

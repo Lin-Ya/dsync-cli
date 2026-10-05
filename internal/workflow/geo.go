@@ -53,6 +53,23 @@ func (e Env) GeoSet(ctx context.Context, value string) error {
 	return nil
 }
 
+// GeoShow 输出当前镜像源及其来源。
+func (e Env) GeoShow() error {
+	c, err := e.Load()
+	if err != nil {
+		return err
+	}
+	if c.LocalErr != nil {
+		return c.LocalErr
+	}
+	geo, src, err := config.ResolveGeo(e.Getenv, c.Paths, c.Local)
+	if err != nil {
+		return err
+	}
+	e.logf("%s（来自 %s）", geo, src)
+	return nil
+}
+
 // reinitChezmoi 以指定 geo 重新生成 chezmoi 配置（chezmoi init）。
 // init 会按模板重写整份配置；age recipient 来自环境变量，需显式保留现有值。
 func (e Env) reinitChezmoi(ctx context.Context, cz chezmoi.Client, geo mirrors.Geo) error {

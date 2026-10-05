@@ -2,7 +2,7 @@
 version = 1
 
 [remote]
-# url = "https://github.com/<you>/dotfiles.git"
+# url = "https://github.com/<you>/dotfiles.git"        # 没有 origin 时 dsync save 按它添加
 # mirrors = ["https://gitee.com/<you>/dotfiles.git"]   # dsync save 时一并推送
 
 [packages]

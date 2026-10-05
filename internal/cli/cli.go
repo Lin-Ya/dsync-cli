@@ -136,7 +136,7 @@ func New(env workflow.Env) *cobra.Command {
 	)
 	groups := map[string]string{
 		"init": "setup", "host": "setup", "self-update": "setup",
-		"sync": "daily", "save": "daily", "capture": "daily", "tool": "daily", "geo": "daily", "provision": "daily",
+		"sync": "daily", "save": "daily", "capture": "daily", "tool": "daily", "geo": "daily", "config": "daily", "provision": "daily",
 		"status": "inspect", "doctor": "inspect", "verify": "inspect", "shell-init": "inspect", "version": "inspect",
 	}
 	for _, c := range root.Commands() {
@@ -162,7 +162,14 @@ func jsonOut(cmd *cobra.Command) bool {
 
 // writeCommands 是会修改本机或仓库的命令（均支持 --dry-run）。
 func writeCommands(envFor func() workflow.Env) []*cobra.Command {
-	geo := &cobra.Command{Use: "geo", Short: "镜像源设置"}
+	geo := &cobra.Command{
+		Use:   "geo",
+		Short: "查看当前镜像源（cn | official）；切换用 dsync geo set",
+		Args:  usageArgs(cobra.NoArgs),
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return envFor().GeoShow()
+		},
+	}
 	geo.AddCommand(&cobra.Command{
 		Use:       "set <cn|official>",
 		Short:     "切换镜像源并重新渲染相关配置（.npmrc / cargo / docker 等）",
@@ -186,7 +193,20 @@ func writeCommands(envFor func() workflow.Env) []*cobra.Command {
 		},
 	}
 	add.Flags().BoolVar(&addOpts.Push, "push", false, "提交后推送到远端")
-	tool.AddCommand(add)
+	var rmOpts workflow.ToolRemoveOptions
+	remove := &cobra.Command{
+		Use:     "remove <tool>...",
+		Aliases: []string{"rm"},
+		Short:   "移除工具：编辑仓库源 → 部署 → lock → 提交（已安装的版本不卸载，mise prune 清理）",
+		Example: "  dsync tool remove jq\n  dsync tool rm npm:typescript --push",
+		Args:    usageArgs(cobra.MinimumNArgs(1)),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			rmOpts.Tools = args
+			return envFor().ToolRemove(cmd.Context(), rmOpts)
+		},
+	}
+	remove.Flags().BoolVar(&rmOpts.Push, "push", false, "提交后推送到远端")
+	tool.AddCommand(add, remove)
 
 	var capOpts workflow.CaptureOptions
 	capture := &cobra.Command{
@@ -304,7 +324,55 @@ func writeCommands(envFor func() workflow.Env) []*cobra.Command {
 		},
 	}
 	verify.Flags().StringVar(&verifyOpts.Source, "source", "", "dotfiles 仓库根目录（默认本机仓库）")
-	return []*cobra.Command{geo, tool, capture, save, sync, prov, initCmd, selfUpdate, verify, hostCommand(envFor)}
+	return []*cobra.Command{geo, tool, configCommand(envFor), capture, save, sync, prov, initCmd, selfUpdate, verify, hostCommand(envFor)}
+}
+
+// configCommand 读写本机配置 local.toml（取代手工编辑）。
+func configCommand(envFor func() workflow.Env) *cobra.Command {
+	keys := "可用的键: " + strings.Join(workflow.LocalKeyNames(), "、") + "（tags 为逗号分隔的列表）。geo 用 dsync geo set 修改。"
+	cfg := &cobra.Command{Use: "config", Short: "查看 / 修改本机配置 local.toml（git 身份、机器标签、代理…）"}
+	cfg.AddCommand(&cobra.Command{
+		Use:   "show",
+		Short: "显示 local.toml 位置与各配置项的当前值",
+		Args:  usageArgs(cobra.NoArgs),
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return envFor().ConfigShow()
+		},
+	}, &cobra.Command{
+		Use:   "set <键> <值> [<键> <值>]...",
+		Short: "修改配置项；git 身份 / 标签会立即重新部署（无需 dsync sync），代理在新终端生效",
+		Long:  "修改 ~/.config/dsync/local.toml 中的配置项。\n" + keys,
+		Example: "  dsync config set user.name 'Your Name' user.email you@example.com\n" +
+			"  dsync config set proxy.http 'http://${WSL_HOST_IP}:7890' proxy.https 'http://${WSL_HOST_IP}:7890'\n" +
+			"  dsync config set tags work,laptop",
+		Args: usageArgs(func(_ *cobra.Command, args []string) error {
+			if len(args) == 0 || len(args)%2 != 0 {
+				return fmt.Errorf("需要成对的 <键> <值>，收到 %d 个参数", len(args))
+			}
+			return nil
+		}),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var pairs [][2]string
+			for i := 0; i < len(args); i += 2 {
+				pairs = append(pairs, [2]string{args[i], args[i+1]})
+			}
+			return envFor().ConfigSet(cmd.Context(), pairs)
+		},
+	}, &cobra.Command{
+		Use:     "unset <键>...",
+		Short:   "清除配置项（proxy.* 全部清除后即不再设置代理）",
+		Long:    "清除 ~/.config/dsync/local.toml 中的配置项。\n" + keys,
+		Example: "  dsync config unset proxy.http proxy.https",
+		Args:    usageArgs(cobra.MinimumNArgs(1)),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var pairs [][2]string
+			for _, k := range args {
+				pairs = append(pairs, [2]string{k, ""})
+			}
+			return envFor().ConfigSet(cmd.Context(), pairs)
+		},
+	})
+	return cfg
 }
 
 // hostCommand 是 Windows 宿主相关命令（取代 v1 bootstrap.ps1）。

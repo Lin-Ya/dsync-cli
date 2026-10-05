@@ -12,9 +12,10 @@
 
 ```bash
 dsync sync                      # 拉取 → 部署配置 → 系统步骤 → 安装工具
-dsync tool add node@22          # 新增 / 升级工具并提交
+dsync tool add node@22          # 新增 / 升级工具并提交（移除: dsync tool remove <工具>）
 dsync capture ~/.gitconfig      # 本机改动写回仓库并提交
-dsync save                      # 提交并推送
+dsync save                      # 提交并推送（首次推送前在 dsync.toml 的 [remote] 写 url）
+dsync config set user.name '…' user.email …   # 本机 git 身份等（不入库）
 dsync verify                    # 校验 dsync.toml 并渲染全部模板（CI 同样执行）
 ```
 
