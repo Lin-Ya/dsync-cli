@@ -293,15 +293,17 @@ func TestToolAdd_I_DryRunWithoutLockfile(t *testing.T) {
 	}
 }
 
-// noGitIdentity 去掉 fixture 仓库的 git 身份（环境变量也清掉，避免继承开发机设置）。
+// noGitIdentity 去掉 fixture 仓库的 git 身份（环境变量也清掉，避免继承开发机设置），
+// 并禁止 git 自动推断：macOS 上 git 会从账户全名与主机名推断出可用身份（CI runner 即如此）。
 func (tf *toolFixture) noGitIdentity(t *testing.T) {
 	t.Helper()
-	for _, k := range []string{"GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"} {
+	for _, k := range []string{"GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL", "EMAIL"} {
 		t.Setenv(k, "")
 		os.Unsetenv(k)
 	}
 	tf.git(t, "config", "--unset", "user.name")
 	tf.git(t, "config", "--unset", "user.email")
+	tf.git(t, "config", "user.useConfigOnly", "true")
 }
 
 // 场景 J：没有 git 身份时在改动任何文件之前失败，而不是做完全部步骤后提交失败。
