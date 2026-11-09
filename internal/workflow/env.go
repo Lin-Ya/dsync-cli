@@ -13,6 +13,7 @@ import (
 	"github.com/Lin-Ya/dsync-cli/internal/chezmoi"
 	"github.com/Lin-Ya/dsync-cli/internal/config"
 	"github.com/Lin-Ya/dsync-cli/internal/exec"
+	"github.com/Lin-Ya/dsync-cli/internal/mirrors"
 	"github.com/Lin-Ya/dsync-cli/internal/mise"
 	"github.com/Lin-Ya/dsync-cli/internal/platform"
 )
@@ -71,6 +72,26 @@ func (e Env) chezmoi(source string) chezmoi.Client {
 	return chezmoi.Client{R: e.Runner, Source: source}
 }
 func (e Env) mise() mise.Client { return mise.Client{R: e.Runner} }
+
+// miseFor 返回带 geo 镜像环境的 mise 客户端，用于 install / lock：有值的镜像变量导出，
+// 空值（official 下的全部镜像、任何 geo 下已弃用的变量）从继承环境中去掉。
+// 新设备首次 init 时 shell 里还没有 shell-init 导出的变量；geo 刚切换或 dsync 刚升级时，
+// 当前 shell 里还留着旧值。
+func (e Env) miseFor(geo mirrors.Geo) (mise.Client, error) {
+	settings, err := mirrors.EnvFor(geo)
+	if err != nil {
+		return mise.Client{}, err
+	}
+	c := e.mise()
+	for _, s := range settings {
+		if s.Value == "" {
+			c.Unset = append(c.Unset, s.Name)
+		} else {
+			c.Env = append(c.Env, s.Name+"="+s.Value)
+		}
+	}
+	return c, nil
+}
 
 // writeFile 写文件，必要时创建父目录（dry-run 下只打印，不建目录）。
 func (e Env) writeFile(path string, data []byte, perm os.FileMode) error {

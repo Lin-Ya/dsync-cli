@@ -14,6 +14,10 @@ import (
 // Client 调用 mise。
 type Client struct {
 	R exec.Runner
+	// Env / Unset 用于会下载或写 lockfile 的命令（install / lock）：注入当前 geo 的镜像变量，
+	// 并去掉继承环境中不应生效的镜像变量。
+	Env   []string
+	Unset []string
 }
 
 // Version 返回 `mise --version` 的首个字段（如 2026.9.0）。
@@ -117,20 +121,22 @@ func (c Client) Unuse(ctx context.Context, configPath string, tools ...string) e
 	return err
 }
 
-// InstallLocked 按 lockfile 安装全部工具（版本漂移即失败，不静默回退）。env 追加到子进程环境（镜像变量）。
-func (c Client) InstallLocked(ctx context.Context, env []string) error {
-	_, err := c.R.Run(ctx, exec.Cmd{Name: "mise", Args: []string{"install", "--locked"}, Env: env, Interactive: true})
-	return err
+// InstallLocked 按 lockfile 安装全部工具（版本漂移即失败，不静默回退）。
+func (c Client) InstallLocked(ctx context.Context) error {
+	return c.runMirrored(ctx, "install", "--locked")
 }
 
-// Install 按配置安装全部工具（无 lockfile 时使用）。env 同 InstallLocked。
-func (c Client) Install(ctx context.Context, env []string) error {
-	_, err := c.R.Run(ctx, exec.Cmd{Name: "mise", Args: []string{"install"}, Env: env, Interactive: true})
-	return err
+// Install 按配置安装全部工具（无 lockfile 时使用）。
+func (c Client) Install(ctx context.Context) error {
+	return c.runMirrored(ctx, "install")
 }
 
 // LockGlobal 为全局配置生成/更新 lockfile（全局工具必须 --global）。
 func (c Client) LockGlobal(ctx context.Context) error {
-	_, err := c.R.Run(ctx, exec.Cmd{Name: "mise", Args: []string{"lock", "--global"}, Interactive: true})
+	return c.runMirrored(ctx, "lock", "--global")
+}
+
+func (c Client) runMirrored(ctx context.Context, args ...string) error {
+	_, err := c.R.Run(ctx, exec.Cmd{Name: "mise", Args: args, Env: c.Env, Unset: c.Unset, Interactive: true})
 	return err
 }

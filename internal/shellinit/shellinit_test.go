@@ -83,15 +83,18 @@ func TestGenerate_Eval(t *testing.T) {
 	}
 	out, _ := Generate(Options{Shell: "bash", Geo: mirrors.CN, Platform: linux,
 		Proxy: &config.Proxy{HTTP: "http://${WSL_HOST_IP}:7890", NoProxy: "a,$(rm -rf /),`x`"}})
-	env := evalEnv(t, out, map[string]string{})
+	env := evalEnv(t, out, map[string]string{"MISE_NODE_MIRROR_URL": "stale"})
+	if _, ok := env["MISE_NODE_MIRROR_URL"]; ok {
+		t.Error("cn 下也应清除旧的 MISE_NODE_MIRROR_URL（会被 mise 写进 lockfile）")
+	}
 	want := map[string]string{
-		"DSYNC_GEO":            "cn",
-		"DSYNC_GEO_SOURCE":     "shell-init",
-		"MISE_NODE_MIRROR_URL": "https://npmmirror.com/mirrors/node/",
-		"NPM_CONFIG_REGISTRY":  "https://registry.npmmirror.com",
-		"http_proxy":           "http://127.0.0.1:7890", // 非 WSL：占位符回退回环
-		"HTTP_PROXY":           "http://127.0.0.1:7890",
-		"no_proxy":             "a,$(rm -rf /),`x`", // 字面量，不得被执行
+		"DSYNC_GEO":             "cn",
+		"DSYNC_GEO_SOURCE":      "shell-init",
+		"MISE_URL_REPLACEMENTS": `{"https://nodejs.org/dist/":"https://npmmirror.com/mirrors/node/"}`,
+		"NPM_CONFIG_REGISTRY":   "https://registry.npmmirror.com",
+		"http_proxy":            "http://127.0.0.1:7890", // 非 WSL：占位符回退回环
+		"HTTP_PROXY":            "http://127.0.0.1:7890",
+		"no_proxy":              "a,$(rm -rf /),`x`", // 字面量，不得被执行
 	}
 	for k, v := range want {
 		if env[k] != v {
@@ -100,8 +103,8 @@ func TestGenerate_Eval(t *testing.T) {
 	}
 
 	off, _ := Generate(Options{Shell: "bash", Geo: mirrors.Official, Platform: linux})
-	env = evalEnv(t, off, map[string]string{"PIP_INDEX_URL": "stale", "MISE_NODE_MIRROR_URL": "stale"})
-	for _, k := range []string{"PIP_INDEX_URL", "MISE_NODE_MIRROR_URL"} {
+	env = evalEnv(t, off, map[string]string{"PIP_INDEX_URL": "stale", "MISE_NODE_MIRROR_URL": "stale", "MISE_URL_REPLACEMENTS": "stale"})
+	for _, k := range []string{"PIP_INDEX_URL", "MISE_NODE_MIRROR_URL", "MISE_URL_REPLACEMENTS"} {
 		if _, ok := env[k]; ok {
 			t.Errorf("official 下 %s 应被 unset", k)
 		}

@@ -15,6 +15,7 @@ import (
 	"io"
 	"os"
 	osexec "os/exec"
+	"slices"
 	"strings"
 )
 
@@ -24,6 +25,8 @@ type Cmd struct {
 	Args []string
 	Dir  string   // 工作目录；空 = 继承
 	Env  []string // 追加到当前环境的 KEY=VALUE
+	// Unset 从继承的环境中去掉的变量名（先于 Env 生效）。
+	Unset []string
 	// Interactive 时直连终端（stdin/stdout/stderr），用于 chezmoi apply 的覆盖确认、
 	// mise install 的进度输出等；此时 Result 不含输出。
 	Interactive bool
@@ -105,8 +108,12 @@ func (Real) LookPath(name string) (string, error) {
 func runReal(ctx context.Context, c Cmd) (Result, error) {
 	cmd := osexec.CommandContext(ctx, c.Name, c.Args...)
 	cmd.Dir = c.Dir
-	if len(c.Env) > 0 {
-		cmd.Env = append(cmd.Environ(), c.Env...)
+	if len(c.Env) > 0 || len(c.Unset) > 0 {
+		env := cmd.Environ()
+		for _, name := range c.Unset {
+			env = slices.DeleteFunc(env, func(kv string) bool { return strings.HasPrefix(kv, name+"=") })
+		}
+		cmd.Env = append(env, c.Env...)
 	}
 	var stdout, stderr bytes.Buffer
 	if c.Interactive {

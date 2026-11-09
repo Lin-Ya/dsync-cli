@@ -8,7 +8,7 @@ export https_proxy="http://${WSL_HOST_IP}:7890"
 export HTTPS_PROXY="http://${WSL_HOST_IP}:7890"
 export no_proxy="localhost,127.0.0.1"
 export NO_PROXY="localhost,127.0.0.1"
-export MISE_NODE_MIRROR_URL='https://npmmirror.com/mirrors/node/'
+export MISE_URL_REPLACEMENTS='{"https://nodejs.org/dist/":"https://npmmirror.com/mirrors/node/"}'
 export PIP_INDEX_URL='https://pypi.tuna.tsinghua.edu.cn/simple'
 export UV_DEFAULT_INDEX='https://pypi.tuna.tsinghua.edu.cn/simple'
 export UV_INDEX_URL='https://pypi.tuna.tsinghua.edu.cn/simple'
@@ -20,6 +20,7 @@ export HOMEBREW_API_DOMAIN='https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottle
 export HOMEBREW_BOTTLE_DOMAIN='https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles'
 export HOMEBREW_BREW_GIT_REMOTE='https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/brew.git'
 export HOMEBREW_CORE_GIT_REMOTE='https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/homebrew-core.git'
+unset MISE_NODE_MIRROR_URL
 export SSH_AUTH_SOCK="$HOME/.ssh/agent.sock"
 if command -v socat >/dev/null 2>&1 && [ -x "$HOME/.local/bin/npiperelay.exe" ]; then
   if [ -S "$SSH_AUTH_SOCK" ] && command -v ss >/dev/null 2>&1 && ss -xl 2>/dev/null | grep -q "agent.sock"; then

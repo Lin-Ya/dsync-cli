@@ -6,6 +6,7 @@
 package mirrors
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 )
@@ -80,8 +81,12 @@ type EnvVar struct {
 }
 
 // envVars：环境变量 → 组件。顺序即 shell-init 的输出顺序（与 v1 apply_mirror_env 一致）。
+//
+// node 镜像经 mise 的 url_replacements（只在下载时改写地址），而不是 v1 的 MISE_NODE_MIRROR_URL：
+// 后者会作为 node 的 mirror_url 选项写进 mise.lock，cn / official 生成的 lockfile 互不匹配
+// （install --locked 报 "node@24 is not in the lockfile"）。url_replacements 下两者生成的 lockfile 相同。
 var envVars = []EnvVar{
-	{"MISE_NODE_MIRROR_URL", "node"},
+	{"MISE_URL_REPLACEMENTS", "node"},
 	{"PIP_INDEX_URL", "pip"},
 	{"UV_DEFAULT_INDEX", "pip"},
 	{"UV_INDEX_URL", "pip"},
@@ -94,6 +99,17 @@ var envVars = []EnvVar{
 	{"HOMEBREW_BREW_GIT_REMOTE", "brew_brew"},
 	{"HOMEBREW_CORE_GIT_REMOTE", "brew_core"},
 }
+
+// formats：变量值不是组件 URL 本身时的转换。
+var formats = map[string]func(url string) string{
+	"MISE_URL_REPLACEMENTS": func(u string) string {
+		b, _ := json.Marshal(map[string]string{"https://nodejs.org/dist/": u})
+		return string(b)
+	},
+}
+
+// legacyEnv：已弃用、任何 geo 下都要清除的变量（旧会话 / 旧版 dsync 留下的值会让 mise 把镜像写进 lockfile）。
+var legacyEnv = []string{"MISE_NODE_MIRROR_URL"}
 
 // EnvVars 返回镜像层管理的全部环境变量。
 func EnvVars() []EnvVar {
@@ -108,15 +124,21 @@ type Setting struct {
 	Value string
 }
 
-// EnvFor 返回 geo 对应的环境变量设置（cn = 导出镜像；official = 全部 unset）。
+// EnvFor 返回 geo 对应的环境变量设置（cn = 导出镜像；official = 全部 unset）。已弃用的变量总是 unset。
 func EnvFor(geo Geo) ([]Setting, error) {
-	out := make([]Setting, 0, len(envVars))
+	out := make([]Setting, 0, len(envVars)+len(legacyEnv))
 	for _, v := range envVars {
 		u, err := URL(v.Component, geo)
 		if err != nil {
 			return nil, err
 		}
+		if f := formats[v.Name]; f != nil && u != "" {
+			u = f(u)
+		}
 		out = append(out, Setting{Name: v.Name, Value: u})
+	}
+	for _, name := range legacyEnv {
+		out = append(out, Setting{Name: name})
 	}
 	return out, nil
 }

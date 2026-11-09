@@ -73,27 +73,20 @@ func (e Env) Sync(ctx context.Context) error {
 
 // miseInstall 安装全局配置中的工具：有 lockfile 时严格按锁定版本（失败即报错，不退化）；
 // 没有 lockfile（新仓库）时普通安装并提示生成 lockfile。
-// 带上当前 geo 的镜像变量：lockfile 记录了 node 的 mirror_url，须与之一致才能匹配；
-// 新设备首次 init 时 shell 里还没有 shell-init 导出的这些变量。
+// 按当前 geo 设置镜像环境（见 miseFor）。
 func (e Env) miseInstall(ctx context.Context, home string, geo mirrors.Geo) error {
-	settings, err := mirrors.EnvFor(geo)
+	m, err := e.miseFor(geo)
 	if err != nil {
 		return err
 	}
-	var env []string
-	for _, s := range settings {
-		if s.Value != "" {
-			env = append(env, s.Name+"="+s.Value)
-		}
-	}
 	if fileExists(filepath.Join(home, ".config", "mise", "mise.lock")) {
-		if err := e.mise().InstallLocked(ctx, env); err != nil {
+		if err := m.InstallLocked(ctx); err != nil {
 			return fmt.Errorf("%w\n  lockfile 与配置不一致？在任一机器上执行 mise lock --global 后 dsync capture ~/.config/mise/mise.lock", err)
 		}
 		return nil
 	}
 	e.logf("  （未找到 lockfile，按配置安装；建议执行 mise lock --global 后 dsync capture ~/.config/mise/mise.lock 固化版本）")
-	return e.mise().Install(ctx, env)
+	return m.Install(ctx)
 }
 
 // CaptureOptions 是 `dsync capture` 的参数。

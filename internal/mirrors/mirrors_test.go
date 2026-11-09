@@ -65,8 +65,12 @@ func TestEnvFor(t *testing.T) {
 	for _, s := range cnEnv {
 		m[s.Name] = s.Value
 	}
-	if m["MISE_NODE_MIRROR_URL"] != "https://npmmirror.com/mirrors/node/" || m["RUSTUP_DIST_SERVER"] != "https://rsproxy.cn" {
+	if m["MISE_URL_REPLACEMENTS"] != `{"https://nodejs.org/dist/":"https://npmmirror.com/mirrors/node/"}` || m["RUSTUP_DIST_SERVER"] != "https://rsproxy.cn" {
 		t.Errorf("cn env 错误: %v", m)
+	}
+	// node 镜像不得经 MISE_NODE_MIRROR_URL（会写进 mise.lock）：两种 geo 下都应清除
+	if v, ok := m["MISE_NODE_MIRROR_URL"]; !ok || v != "" {
+		t.Errorf("cn 下 MISE_NODE_MIRROR_URL 应被清除: %q %v", v, ok)
 	}
 	off, _ := EnvFor(Official)
 	for _, s := range off {
@@ -74,8 +78,8 @@ func TestEnvFor(t *testing.T) {
 			t.Errorf("official 下 %s 应为空（unset），得到 %q", s.Name, s.Value)
 		}
 	}
-	if len(off) != 12 {
-		t.Errorf("环境变量数 = %d, want 12（与 v1 apply_mirror_env 一致）", len(off))
+	if len(off) != 13 {
+		t.Errorf("环境变量数 = %d, want 13（v1 apply_mirror_env 的 12 个，node 改用 url_replacements，另清除旧变量）", len(off))
 	}
 	// 每个变量引用的组件都必须存在
 	for _, v := range EnvVars() {

@@ -103,7 +103,7 @@ func TestShellInit_ProxySources(t *testing.T) {
 	if strings.Contains(out, "proxy.env") || !strings.Contains(out, `export https_proxy="http://127.0.0.1:7890"`) {
 		t.Errorf("local.toml [proxy] 应优先于 v1 proxy.env:\n%s", out)
 	}
-	if !strings.Contains(out, "export DSYNC_GEO='official'") || !strings.Contains(out, "unset MISE_NODE_MIRROR_URL") {
+	if !strings.Contains(out, "export DSYNC_GEO='official'") || !strings.Contains(out, "unset MISE_URL_REPLACEMENTS") {
 		t.Errorf("geo=official 应清除镜像变量:\n%s", out)
 	}
 }
