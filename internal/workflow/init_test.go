@@ -335,3 +335,39 @@ func TestInit_GitIdentity(t *testing.T) {
 		}
 	})
 }
+
+// miseInstallEnv 返回最后一次 mise install 调用附带的环境变量。
+func (f *fixture) miseInstallEnv(t *testing.T) string {
+	t.Helper()
+	env, found := "", false
+	for _, c := range f.rec.Calls {
+		if c.Cmd.Name == "mise" && len(c.Cmd.Args) > 0 && c.Cmd.Args[0] == "install" {
+			env, found = strings.Join(c.Cmd.Env, " "), true
+		}
+	}
+	if !found {
+		t.Fatalf("未调用 mise install: %v", f.rec.Lines())
+	}
+	return env
+}
+
+// 新设备首次 init 时 shell 里还没有 shell-init 导出的镜像变量；lockfile 记录了 node 的 mirror_url，
+// mise install --locked 必须带上当前 geo 的镜像变量才能匹配（否则报 "node@24 is not in the lockfile"）。
+func TestInit_MiseInstallGetsGeoMirrors(t *testing.T) {
+	f := initFixture(t)
+	f.write(t, "dots/.chezmoi.toml.tmpl", "")
+	f.write(t, ".config/mise/mise.lock", "lock\n")
+	if err := f.Env().Init(context.Background(), InitOptions{Source: filepath.Join(f.home, "dots"), Geo: "cn"}); err != nil {
+		t.Fatal(err)
+	}
+	if env := f.miseInstallEnv(t); !strings.Contains(env, "MISE_NODE_MIRROR_URL=https://npmmirror.com/mirrors/node/") {
+		t.Errorf("cn 下 mise install 应带 node 镜像: %q", env)
+	}
+	f.rec.Calls = nil
+	if err := f.Env().Init(context.Background(), InitOptions{Geo: "official"}); err != nil {
+		t.Fatal(err)
+	}
+	if env := f.miseInstallEnv(t); strings.Contains(env, "MISE_NODE_MIRROR_URL") {
+		t.Errorf("official 下 mise install 不应带镜像变量: %q", env)
+	}
+}

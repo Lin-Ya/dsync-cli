@@ -268,3 +268,17 @@ func TestNoGitIdentity_CaptureFailsEarlySaveStillPushes(t *testing.T) {
 		t.Errorf("有改动时 save 应报 git 身份未配置: %v", err)
 	}
 }
+
+func TestSync_MiseInstallGetsGeoMirrors(t *testing.T) {
+	tf := newToolFixture(t) // 未指定 geo：默认 cn
+	withRemote(t, tf)
+	tf.rec.OnStdout("mise install --locked", "")
+	tf.tools("zsh")
+	tf.rec.OnStdout("getent passwd", "u:x:1000:1000::/home/u:/usr/bin/zsh\n")
+	if err := tf.Env().Sync(context.Background()); err != nil {
+		t.Fatalf("%v\n%s", err, tf.out.String())
+	}
+	if env := tf.miseInstallEnv(t); !strings.Contains(env, "MISE_NODE_MIRROR_URL=https://npmmirror.com/mirrors/node/") {
+		t.Errorf("cn 下 mise install 应带 node 镜像: %q", env)
+	}
+}

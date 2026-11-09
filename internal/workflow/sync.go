@@ -10,6 +10,7 @@ import (
 
 	"github.com/Lin-Ya/dsync-cli/internal/config"
 	"github.com/Lin-Ya/dsync-cli/internal/gitrepo"
+	"github.com/Lin-Ya/dsync-cli/internal/mirrors"
 )
 
 // Sync 拉取仓库 → chezmoi apply → provision → mise install --locked（取代 v1 dsync update）。
@@ -45,12 +46,12 @@ func (e Env) Sync(ctx context.Context) error {
 			return err
 		}
 	}
+	geo, _, err := config.ResolveGeo(e.Getenv, c.Paths, c.Local)
+	if err != nil {
+		return err
+	}
 	e.logf("[2/4] chezmoi apply")
 	if repo.Layout == LayoutV2 { // 拉取后 dsync.toml [data] 可能变化：重新生成 chezmoi 配置
-		geo, _, err := config.ResolveGeo(e.Getenv, c.Paths, c.Local)
-		if err != nil {
-			return err
-		}
 		if err := e.configureChezmoi(ctx, c, repo, geo); err != nil {
 			return err
 		}
@@ -63,7 +64,7 @@ func (e Env) Sync(ctx context.Context) error {
 		return err
 	}
 	e.logf("[4/4] mise install")
-	if err := e.miseInstall(ctx, c.Paths.Home); err != nil {
+	if err := e.miseInstall(ctx, c.Paths.Home, geo); err != nil {
 		return err
 	}
 	e.logf(">>> 同步完成")
@@ -72,15 +73,27 @@ func (e Env) Sync(ctx context.Context) error {
 
 // miseInstall 安装全局配置中的工具：有 lockfile 时严格按锁定版本（失败即报错，不退化）；
 // 没有 lockfile（新仓库）时普通安装并提示生成 lockfile。
-func (e Env) miseInstall(ctx context.Context, home string) error {
+// 带上当前 geo 的镜像变量：lockfile 记录了 node 的 mirror_url，须与之一致才能匹配；
+// 新设备首次 init 时 shell 里还没有 shell-init 导出的这些变量。
+func (e Env) miseInstall(ctx context.Context, home string, geo mirrors.Geo) error {
+	settings, err := mirrors.EnvFor(geo)
+	if err != nil {
+		return err
+	}
+	var env []string
+	for _, s := range settings {
+		if s.Value != "" {
+			env = append(env, s.Name+"="+s.Value)
+		}
+	}
 	if fileExists(filepath.Join(home, ".config", "mise", "mise.lock")) {
-		if err := e.mise().InstallLocked(ctx); err != nil {
+		if err := e.mise().InstallLocked(ctx, env); err != nil {
 			return fmt.Errorf("%w\n  lockfile 与配置不一致？在任一机器上执行 mise lock --global 后 dsync capture ~/.config/mise/mise.lock", err)
 		}
 		return nil
 	}
 	e.logf("  （未找到 lockfile，按配置安装；建议执行 mise lock --global 后 dsync capture ~/.config/mise/mise.lock 固化版本）")
-	return e.mise().Install(ctx)
+	return e.mise().Install(ctx, env)
 }
 
 // CaptureOptions 是 `dsync capture` 的参数。
