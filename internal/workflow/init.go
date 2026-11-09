@@ -96,7 +96,7 @@ func (e Env) Init(ctx context.Context, o InitOptions) error {
 	}
 
 	e.logf("[6/6] mise install")
-	if err := e.miseInstall(ctx, c.Paths.Home); err != nil {
+	if err := e.miseInstall(ctx, c.Paths.Home, geo); err != nil {
 		return err
 	}
 

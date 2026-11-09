@@ -117,15 +117,15 @@ func (c Client) Unuse(ctx context.Context, configPath string, tools ...string) e
 	return err
 }
 
-// InstallLocked 按 lockfile 安装全部工具（版本漂移即失败，不静默回退）。
-func (c Client) InstallLocked(ctx context.Context) error {
-	_, err := c.R.Run(ctx, exec.Cmd{Name: "mise", Args: []string{"install", "--locked"}, Interactive: true})
+// InstallLocked 按 lockfile 安装全部工具（版本漂移即失败，不静默回退）。env 追加到子进程环境（镜像变量）。
+func (c Client) InstallLocked(ctx context.Context, env []string) error {
+	_, err := c.R.Run(ctx, exec.Cmd{Name: "mise", Args: []string{"install", "--locked"}, Env: env, Interactive: true})
 	return err
 }
 
-// Install 按配置安装全部工具（无 lockfile 时使用）。
-func (c Client) Install(ctx context.Context) error {
-	_, err := c.R.Run(ctx, exec.Cmd{Name: "mise", Args: []string{"install"}, Interactive: true})
+// Install 按配置安装全部工具（无 lockfile 时使用）。env 同 InstallLocked。
+func (c Client) Install(ctx context.Context, env []string) error {
+	_, err := c.R.Run(ctx, exec.Cmd{Name: "mise", Args: []string{"install"}, Env: env, Interactive: true})
 	return err
 }
 
