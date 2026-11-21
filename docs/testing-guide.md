@@ -256,7 +256,7 @@ dsync host setup --source D:\Develop\dsync --proxy 'http://${WSL_HOST_IP}:7890'
 ## 8. 真实 GitHub 流程（可选，会访问 GitHub）
 
 ```bash
-# 私有仓库克隆需要凭据：用户名 + 第 2 节的 token（若要 dsync save 推送，token 还需写权限）
+# dotfiles 仓库若为私有：克隆需要凭据（用户名 + 个人访问令牌；若要 dsync save 推送，令牌还需写权限）
 git config --global credential.helper store      # 首次输入后保存（明文存于 ~/.git-credentials，测试实例可接受）
 dsync init https://github.com/Lin-Ya/dsync.git   # dotfiles 仓库（v2 合并到 main 之前需先 checkout v2）
 ```
