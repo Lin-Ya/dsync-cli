@@ -17,8 +17,12 @@ func run(t *testing.T, args ...string) (code int, stdout, stderr string) {
 	home := t.TempDir()
 	env := workflow.Env{
 		Getenv: func(k string) string {
-			if k == "HOME" {
+			switch k {
+			case "HOME":
 				return home
+			case "DSYNC_GITHUB_API":
+				// 公开仓库匿名即可访问：显式指向不可达地址，避免 self-update 用例真的访问 GitHub
+				return "http://127.0.0.1:1"
 			}
 			return ""
 		},

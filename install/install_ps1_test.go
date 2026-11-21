@@ -25,7 +25,8 @@ func psServer(t *testing.T, genuine, served []byte) *httptest.Server {
 	sum := sha256.Sum256(genuine)
 	var srv *httptest.Server
 	srv = httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer tok" {
+		// 公开仓库：匿名可读；带了错误的 Token 仍然 404
+		if auth := r.Header.Get("Authorization"); auth != "" && auth != "Bearer tok" {
 			http.Error(w, `{"message":"Not Found"}`, http.StatusNotFound)
 			return
 		}
@@ -137,6 +138,19 @@ func TestInstallPS1_NoArgsAndPinnedVersion(t *testing.T) {
 	}
 	if _, err := os.Stat(bin); err != nil || strings.Contains(out, "fake-dsync") {
 		t.Errorf("无参数时只安装:\n%s", out)
+	}
+}
+
+// 公开仓库：没有 Token 也应能安装（不发送 Authorization 头）。
+func TestInstallPS1_NoTokenNeeded(t *testing.T) {
+	requirePS(t)
+	srv := psServer(t, []byte("binary"), []byte("binary"))
+	out, bin, err := runPS(t, srv, map[string]string{"GITHUB_TOKEN": ""})
+	if err != nil {
+		t.Fatalf("无 Token 应能安装:\n%s", out)
+	}
+	if b, _ := os.ReadFile(bin); string(b) != "binary" {
+		t.Error("无 Token 时应已安装")
 	}
 }
 

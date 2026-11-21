@@ -17,14 +17,12 @@ dsync 自己不保存任何配置，它只编排三样东西：
 
 ## 2. 安装
 
-仓库私有，下载需要 Token（fine-grained token，对 `Lin-Ya/dsync-cli` 有 Contents 只读权限；克隆私有 dotfiles 仓库还需要对该仓库的权限）。
+仓库公开，匿名即可安装。设置了 `GITHUB_TOKEN` 或已登录 `gh` 时会自动带上，用于提高 GitHub API 限额（未认证每小时 60 次）。
 
 **Linux / macOS / WSL**
 
 ```bash
-export GITHUB_TOKEN=<token>
-curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github.raw" \
-  "https://api.github.com/repos/Lin-Ya/dsync-cli/contents/install/install.sh" | sh
+curl -fsSL https://raw.githubusercontent.com/Lin-Ya/dsync-cli/main/install/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
 dsync --version
 ```
@@ -32,6 +30,8 @@ dsync --version
 - 安装到 `~/.local/bin/dsync`，按 Release 的 `checksums.txt` 校验 sha256。
 - 在 `sh` 后加 `-s -- <仓库地址>`，安装后直接执行 `dsync init <仓库地址>`。
 - `DSYNC_VERSION=<tag>` 指定版本，`DSYNC_INSTALL_DIR=<目录>` 指定安装位置。
+- 需要认证时（例如公司代理）可改用 GitHub API 下载脚本：`curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github.raw" "https://api.github.com/repos/Lin-Ya/dsync-cli/contents/install/install.sh" | sh`。
+- 你的 dotfiles 仓库如果是私有的，克隆它仍需要凭据；这与安装 dsync 本身无关。
 
 **Windows**：见[第 9 节](#9-windows-宿主)。
 
@@ -312,7 +312,7 @@ dsync verify            # 校验 dsync.toml，并按 linux/darwin × cn/official
 dsync verify --source . # 指定仓库目录（CI 中使用）
 ```
 
-引用了不存在的数据键会直接报错，可发现拼写错误；`[WARN]` 项（如已废弃的 `[deps]`）不影响退出码。starter 模板自带的 GitHub Actions 工作流会在每次 push 时执行它（需在 dotfiles 仓库的 Secrets 中添加 `DSYNC_CLI_TOKEN`）。
+引用了不存在的数据键会直接报错，可发现拼写错误；`[WARN]` 项（如已废弃的 `[deps]`）不影响退出码。starter 模板自带的 GitHub Actions 工作流会在每次 push 时执行它（dsync-cli 已公开，无需额外 secret）。
 
 ## 9. Windows 宿主
 
@@ -320,10 +320,8 @@ dsync verify --source . # 指定仓库目录（CI 中使用）
 
 ```powershell
 # 1) 安装 dsync.exe（PowerShell；不要用 irm | iex）
-$env:GITHUB_TOKEN = '<token>'
-$h = @{ Authorization = "Bearer $env:GITHUB_TOKEN"; Accept = 'application/vnd.github.raw' }
-Invoke-RestMethod -Headers $h -OutFile "$env:TEMP\install-dsync.ps1" `
-  'https://api.github.com/repos/Lin-Ya/dsync-cli/contents/install/install.ps1'
+Invoke-RestMethod -OutFile "$env:TEMP\install-dsync.ps1" `
+  'https://raw.githubusercontent.com/Lin-Ya/dsync-cli/main/install/install.ps1'
 powershell -ExecutionPolicy Bypass -File "$env:TEMP\install-dsync.ps1"
 
 # 2) 新开一个终端，先看计划（不需要管理员）
@@ -348,7 +346,7 @@ dsync self-update                    # 更新到最新 Release（含预发布）
 dsync self-update --version v2.0.0   # 指定版本；--force 重新安装同一版本
 ```
 
-需要 `GITHUB_TOKEN` 或已登录的 `gh`。
+公开仓库，匿名即可更新。未认证的 GitHub API 每小时 60 次；遇到速率限制时设置 `GITHUB_TOKEN`（或先 `gh auth login`）即可。
 
 补全（zsh 为例，写入 `~/.zshrc.local`）：`source <(dsync completion zsh)`。
 
@@ -376,7 +374,7 @@ dsync self-update --version v2.0.0   # 指定版本；--force 重新安装同一
 
 | 变量 | 作用 |
 |---|---|
-| `GITHUB_TOKEN` | 下载私有 Release（安装脚本、`self-update`、`host setup`）；没有时回退 `gh auth token` |
+| `GITHUB_TOKEN` | 可选：提高 GitHub API 速率限制（安装脚本、`self-update`、`host setup` 从公开 Release 下载时匿名即可）；没有时回退 `gh auth token` |
 | `http_proxy` / `https_proxy` | dsync 自身的下载（mise / chezmoi / Release）沿用 |
 | `DSYNC_GEO` | 临时覆盖 geo（优先级见第 6 节） |
 | `DSYNC_CONFIG_DIR` | 覆盖 `~/.config/dsync` |

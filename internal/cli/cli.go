@@ -294,7 +294,7 @@ func writeCommands(envFor func() workflow.Env) []*cobra.Command {
 	var upOpts workflow.SelfUpdateOptions
 	selfUpdate := &cobra.Command{
 		Use:   "self-update",
-		Short: "从 GitHub Release 更新 dsync 自身（私有仓库，需要 GITHUB_TOKEN 或 gh auth）",
+		Short: "从 GitHub Release 更新 dsync 自身（公开仓库匿名即可；受限时用 GITHUB_TOKEN 或 gh auth）",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return envFor().SelfUpdate(cmd.Context(), Version, upOpts)
@@ -419,7 +419,7 @@ func hostCommand(envFor func() workflow.Env) *cobra.Command {
 	f.StringVar(&o.InstallDir, "wsl-install-dir", "", `发行版安装根目录（vhdx 位于 <目录>\<发行版>\）；默认 WSL_INSTALL_DIR 或 D:\Linux（D 盘存在时）；给空值使用系统默认位置`)
 	f.StringVar(&o.WSLUser, "wsl-user", "", "迁移后创建的默认用户（默认取 Windows 用户名的合法小写形式）")
 	f.StringVar(&o.Geo, "geo", "", "镜像源 cn | official（默认：环境变量 DSYNC_GEO > cn）")
-	f.StringVar(&o.LinuxBinary, "linux-binary", "", "linux 版 dsync 的本地路径（默认从 Release 下载，需要 GITHUB_TOKEN）")
+	f.StringVar(&o.LinuxBinary, "linux-binary", "", "linux 版 dsync 的本地路径（默认从公开 Release 下载）")
 	f.StringVar(&o.Proxy, "proxy", "", `WSL 内执行 dsync init 时使用的代理，如 'http://${WSL_HOST_IP}:7890'（${WSL_HOST_IP} 自动替换为 Windows 宿主 IP；代理软件需允许局域网连接）`)
 	f.BoolVar(&checkOnly, "check", false, "只检测并输出计划，不执行")
 	hostCmd.AddCommand(setup)

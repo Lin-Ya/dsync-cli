@@ -116,7 +116,7 @@ func fileExistsAny(p string) bool {
 }
 
 // linuxBinary 返回 Windows 文件系统上 linux/amd64 版 dsync 的路径：
-// 用户指定的文件，或从私有 Release 下载（需要 Token）到临时目录。
+// 用户指定的文件，或从 Release 下载（公开仓库匿名即可，受限时用 Token）到临时目录。
 // Windows 端只发布 amd64，WSL 与宿主同架构。
 func (e Env) linuxBinary(ctx context.Context, o HostOptions) (string, error) {
 	if o.LinuxBinary != "" {
@@ -135,17 +135,14 @@ func (e Env) linuxBinary(ctx context.Context, o HostOptions) (string, error) {
 		fmt.Fprintf(e.Err, "  [dry-run] 从 Release 下载 %s（校验 sha256）到 %s\n", name, p)
 		return p, nil
 	}
-	c, err := e.releaseClient(ctx)
-	if err != nil {
-		return "", fmt.Errorf("%w\n  或用 --linux-binary 指定本地文件", err)
-	}
+	c := e.releaseClient(ctx)
 	tag := o.Version
 	if tag == "dev" {
 		tag = "" // 本地构建：取最新 Release
 	}
 	r, err := c.Get(ctx, tag)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("%w\n  或用 --linux-binary 指定本地文件", err)
 	}
 	data, err := c.Binary(ctx, r, "linux", "amd64")
 	if err != nil {

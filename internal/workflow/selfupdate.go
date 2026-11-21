@@ -2,7 +2,6 @@ package workflow
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -21,39 +20,32 @@ type SelfUpdateOptions struct {
 	Target  string // 被替换的文件；为空 = 当前可执行文件（测试用）
 }
 
-// githubToken：GITHUB_TOKEN 环境变量 > `gh auth token`。仓库私有，必须有 Token。
-func (e Env) githubToken(ctx context.Context) (string, error) {
+// githubToken 返回可选的 GitHub Token：GITHUB_TOKEN 环境变量 > `gh auth token`，都没有时返回空串。
+// 仓库已公开，匿名访问 Release API 就够用（未认证每小时 60 次），Token 只在遇到速率限制、
+// 或企业代理要求认证时才需要。
+func (e Env) githubToken(ctx context.Context) string {
 	if t := e.Getenv("GITHUB_TOKEN"); t != "" {
-		return t, nil
+		return t
 	}
 	if e.has("gh") {
 		if res, err := e.Runner.Query(ctx, exec.Cmd{Name: "gh", Args: []string{"auth", "token"}}); err == nil {
-			if t := strings.TrimSpace(string(res.Stdout)); t != "" {
-				return t, nil
-			}
+			return strings.TrimSpace(string(res.Stdout))
 		}
 	}
-	return "", errors.New("需要 GitHub Token 才能下载私有 Release：设置环境变量 GITHUB_TOKEN（需仓库 Contents 读权限），或先 gh auth login")
+	return ""
 }
 
-func (e Env) releaseClient(ctx context.Context) (release.Client, error) {
-	token, err := e.githubToken(ctx)
-	if err != nil {
-		return release.Client{}, err
-	}
+func (e Env) releaseClient(ctx context.Context) release.Client {
 	api := e.Getenv("DSYNC_GITHUB_API")
 	if api == "" {
 		api = release.DefaultAPI
 	}
-	return release.Client{HTTP: e.httpClient(), API: api, Token: token}, nil
+	return release.Client{HTTP: e.httpClient(), API: api, Token: e.githubToken(ctx)}
 }
 
 // SelfUpdate 下载 Release 中的 dsync 并替换当前可执行文件（按 checksums.txt 校验）。
 func (e Env) SelfUpdate(ctx context.Context, current string, o SelfUpdateOptions) error {
-	c, err := e.releaseClient(ctx)
-	if err != nil {
-		return err
-	}
+	c := e.releaseClient(ctx)
 	r, err := c.Get(ctx, o.Version)
 	if err != nil {
 		return err

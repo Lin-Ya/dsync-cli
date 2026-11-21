@@ -1,19 +1,18 @@
 ﻿<#
-  install.ps1 — 在 Windows 上安装 dsync.exe（从私有 GitHub Release 下载并校验），然后执行 dsync host setup
+  install.ps1 — 在 Windows 上安装 dsync.exe（从 GitHub Release 下载并校验），然后执行 dsync host setup
 
-  仓库私有，需要 Token（Contents 读权限）：取自 $env:GITHUB_TOKEN，或已登录的 gh。
+  仓库公开，匿名即可安装（设置了 $env:GITHUB_TOKEN 或已登录 gh 时自动带上，用于提高 API 限额）。
   用法（管理员 PowerShell；本文件须保留 UTF-8 BOM，否则 PowerShell 5.1 会把中文读成乱码）：
 
-    $env:GITHUB_TOKEN = '<token>'
-    $h = @{ Authorization = "Bearer $env:GITHUB_TOKEN"; Accept = 'application/vnd.github.raw' }
-    Invoke-RestMethod -Headers $h -OutFile "$env:TEMP\install-dsync.ps1" `
-      'https://api.github.com/repos/Lin-Ya/dsync-cli/contents/install/install.ps1'
+    Invoke-RestMethod -OutFile "$env:TEMP\install-dsync.ps1" `
+      'https://raw.githubusercontent.com/Lin-Ya/dsync-cli/main/install/install.ps1'
     powershell -ExecutionPolicy Bypass -File "$env:TEMP\install-dsync.ps1" --source D:\Develop\dsync
 
   其后的参数原样传给 dsync host setup；不带参数时只安装 dsync.exe。
   （不要用 irm | iex：带 BOM 的脚本经 scriptblock 执行会失败，且无法传参。）
 
   环境变量：
+    GITHUB_TOKEN       可选：提高 API 速率限制（未认证每小时 60 次）
     DSYNC_VERSION      目标版本 tag（默认最新，含预发布）
     DSYNC_INSTALL_DIR  安装目录（默认 %LOCALAPPDATA%\dsync\bin，并加入用户 PATH）
     DSYNC_GITHUB_API   GitHub API 地址（测试用）
@@ -37,14 +36,17 @@ $Name = 'dsync_windows_amd64.exe'
 # PowerShell 5.1 默认可能不启用 TLS 1.2，GitHub 需要
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
+# Token 可选：公开仓库匿名也能下载；设置了就带上，提高 API 速率限制。
 $Token = $env:GITHUB_TOKEN
 if (-not $Token -and (Get-Command gh -ErrorAction SilentlyContinue)) {
-  $Token = (& gh auth token 2>$null | Out-String).Trim()
+  # gh 未登录（或已登出）时会往 stderr 写一行；$ErrorActionPreference = 'Stop' 下 PowerShell 5.1
+  # 会把它变成 NativeCommandError 并终止脚本，所以这里必须接住。
+  try { $Token = (& gh auth token 2>$null | Out-String).Trim() } catch { $Token = '' }
 }
-if (-not $Token) { Die '需要 GitHub Token 才能下载私有 Release：$env:GITHUB_TOKEN = "<token>"（或先 gh auth login）' }
 if ($env:PROCESSOR_ARCHITECTURE -ne 'AMD64') { Die "仅提供 windows/amd64 版本（当前 $env:PROCESSOR_ARCHITECTURE）" }
 
-$Headers = @{ Authorization = "Bearer $Token"; 'X-GitHub-Api-Version' = '2022-11-28' }
+$Headers = @{ 'X-GitHub-Api-Version' = '2022-11-28' }
+if ($Token) { $Headers['Authorization'] = "Bearer $Token" }
 
 function Get-Api($url, $accept, $outFile) {
   $h = $Headers.Clone(); $h['Accept'] = $accept
@@ -53,7 +55,7 @@ function Get-Api($url, $accept, $outFile) {
     if ($outFile) { Invoke-WebRequest -Uri $url -Headers $h -OutFile $outFile -UseBasicParsing | Out-Null }
     else { Invoke-RestMethod -Uri $url -Headers $h }
   } catch {
-    Die "请求 $url 失败（Token 无效、无仓库权限或网络受限？）: $($_.Exception.Message)"
+    Die "请求 $url 失败（网络受限，或 Token 无效？未设置 Token 时可能触发了匿名速率限制）: $($_.Exception.Message)"
   }
 }
 

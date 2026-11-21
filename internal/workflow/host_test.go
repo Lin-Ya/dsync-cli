@@ -157,8 +157,8 @@ func TestLinuxBinary_DownloadsSameVersionFromRelease(t *testing.T) {
 	}
 
 	f.env["GITHUB_TOKEN"] = ""
-	if _, err := e.linuxBinary(context.Background(), HostOptions{}); err == nil || !strings.Contains(err.Error(), "--linux-binary") {
-		t.Errorf("无 Token 应提示可用 --linux-binary: %v", err)
+	if _, err := e.linuxBinary(context.Background(), HostOptions{}); err != nil {
+		t.Errorf("公开仓库无 Token 也应能下载: %v", err)
 	}
 	if _, err := e.linuxBinary(context.Background(), HostOptions{LinuxBinary: "/no/such/file"}); err == nil {
 		t.Error("指定的文件不存在应报错")

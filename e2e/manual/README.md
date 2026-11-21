@@ -6,7 +6,7 @@
 ## 前提
 
 - docker、mise（编译时 `mise x go@1.25`）
-- 能访问私有仓库的 GitHub token：`$GITHUB_TOKEN`，未设置时用 `gh auth token`
+- 能访问你的 dotfiles 仓库的 GitHub token：`$GITHUB_TOKEN`，未设置时用 `gh auth token`（dsync-cli 已公开，安装它不需要 Token；这个 Token 只为克隆你的仓库）
 - 需要代理时在宿主导出 `http_proxy` / `https_proxy`，会透传进容器
 
 ## 用法
@@ -38,7 +38,7 @@ bash e2e/manual/run.sh dsync-manual:after-init     # 从快照启动（dsync 仍
 |---|---|
 | 用户 | `ubuntu`（uid 1000），免密 sudo |
 | 预装 | 只有 git / curl / sudo / ca-certificates，其余交给 dsync |
-| dsync | 宿主编译，只读挂载到 `/usr/local/bin/dsync`，不经过私有 Release（`install.sh` / `self-update` 不在覆盖范围内） |
+| dsync | 宿主编译，只读挂载到 `/usr/local/bin/dsync`，不经过 Release 下载（`install.sh` / `self-update` 不在覆盖范围内） |
 | 凭据 | token 以文件挂载到 `/run/secrets/github_token`，由 `/etc/gitconfig` 中的 credential helper 读取，不写进镜像或快照 |
 | 测不到 | WSL 相关行为（无 `/run/WSL`，`wsl-ssh-agent` 步骤不执行）、systemd；`docker-check` 为 WARN |
 

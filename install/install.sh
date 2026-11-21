@@ -1,15 +1,14 @@
 #!/bin/sh
 # ============================================================================
-# install.sh — 安装 dsync（从私有 GitHub Release 下载并校验），然后执行 dsync init
+# install.sh — 安装 dsync（从 GitHub Release 下载并校验 sha256），然后执行 dsync init
 #
-# 仓库私有，需要 Token（Contents 读权限）。取自 GITHUB_TOKEN，或已登录的 gh。
+# 仓库公开，匿名即可安装（设置了 GITHUB_TOKEN 或已登录 gh 时会自动带上，用于提高 API 限额）：
 #
-#   export GITHUB_TOKEN=<token>
-#   curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github.raw" \
-#     "https://api.github.com/repos/Lin-Ya/dsync-cli/contents/install/install.sh" \
+#   curl -fsSL https://raw.githubusercontent.com/Lin-Ya/dsync-cli/main/install/install.sh \
 #     | sh -s -- https://github.com/<you>/dotfiles.git      # 参数原样传给 dsync init
 #
 # 环境变量：
+#   GITHUB_TOKEN       可选：提高 API 速率限制（未认证每小时 60 次）
 #   DSYNC_VERSION      目标版本 tag（默认最新，含预发布）
 #   DSYNC_INSTALL_DIR  安装目录（默认 ~/.local/bin）
 #   DSYNC_GITHUB_API   GitHub API 地址（测试用）
@@ -23,11 +22,11 @@ DIR="${DSYNC_INSTALL_DIR:-$HOME/.local/bin}"
 
 die() { echo "dsync install: $*" >&2; exit 1; }
 
+# Token 可选：公开仓库匿名也能下载；设置了就带上，提高 API 速率限制。
 TOKEN="${GITHUB_TOKEN:-}"
 if [ -z "$TOKEN" ] && command -v gh >/dev/null 2>&1; then
   TOKEN="$(gh auth token 2>/dev/null || true)"
 fi
-[ -n "$TOKEN" ] || die "需要 GitHub Token 才能下载私有 Release：export GITHUB_TOKEN=<token>（或先 gh auth login）"
 
 case "$(uname -s)" in
   Linux) os=linux ;;
@@ -42,8 +41,13 @@ esac
 name="dsync_${os}_${arch}"
 
 api() { # $1=URL $2=Accept $3=输出文件（可选，缺省输出到 stdout）
-  curl -fsSL -H "Authorization: Bearer $TOKEN" -H "Accept: $2" -H "X-GitHub-Api-Version: 2022-11-28" \
-    ${3:+-o "$3"} "$1" || die "请求 $1 失败（Token 无效、无仓库权限或网络受限？）"
+  if [ -n "$TOKEN" ]; then
+    curl -fsSL -H "Authorization: Bearer $TOKEN" -H "Accept: $2" -H "X-GitHub-Api-Version: 2022-11-28" \
+      ${3:+-o "$3"} "$1" || die "请求 $1 失败（网络受限，或 Token 无效 / 无仓库权限？）"
+  else
+    curl -fsSL -H "Accept: $2" -H "X-GitHub-Api-Version: 2022-11-28" \
+      ${3:+-o "$3"} "$1" || die "请求 $1 失败（网络受限，或触发了 GitHub 匿名速率限制？设置 GITHUB_TOKEN 可提高限额）"
+  fi
 }
 
 if [ -n "${DSYNC_VERSION:-}" ]; then
