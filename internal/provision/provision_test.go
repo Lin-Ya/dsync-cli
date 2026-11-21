@@ -28,6 +28,14 @@ URIs: http://security.ubuntu.com/ubuntu/
 Suites: noble-security
 `
 
+const tunaSources = `Types: deb
+URIs: http://mirrors.tuna.tsinghua.edu.cn/ubuntu/
+Suites: noble noble-updates
+Types: deb
+URIs: http://mirrors.tuna.tsinghua.edu.cn/ubuntu/
+Suites: noble-security
+`
+
 func newCtx(t *testing.T, p platform.Platform) (*Context, *exec.Recording) {
 	t.Helper()
 	rec := &exec.Recording{Paths: map[string]string{}}
@@ -144,6 +152,41 @@ func TestApt_RootNoSudoAndConvergence(t *testing.T) {
 	installed(rec, "curl")
 	if r := check(t, aptStep{}, x); r.State != Done {
 		t.Errorf("全部已装应为 done: %+v", r)
+	}
+}
+
+// 一个源文件已换源、另一个仍是官方源：必须继续处理剩下的那个文件。
+// 旧实现在任一文件里看到镜像地址就整体返回 nil，混合状态会被判为已完成且永不修复。
+func TestApt_MixedSourcesConverge(t *testing.T) {
+	x, rec := newCtx(t, ubuntu)
+	x.UID = 0
+	x.Geo = mirrors.CN
+	x.Manifest.Packages.Apt = nil // 只看换源，不涉及装包
+	mirrored := filepath.Join(x.Root, "etc/apt/sources.list.d/ubuntu.sources")
+	official := filepath.Join(x.Root, "etc/apt/sources.list")
+	writeFile(t, mirrored, tunaSources, 0o644)
+	writeFile(t, official, ubuntuSources, 0o644)
+
+	if r := check(t, aptStep{}, x); r.State != Pending || r.Detail != "切换 apt 源到 TUNA 镜像" {
+		t.Fatalf("混合源应被识别为待办: %+v", r)
+	}
+
+	rec.Calls = nil
+	if err := (aptStep{}).Apply(context.Background(), x); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"cp " + official + " " + official + ".bak.dsync",
+		`sed -i -e 's@//archive\.ubuntu\.com/ubuntu@//mirrors.tuna.tsinghua.edu.cn/ubuntu@g' -e 's@//security\.ubuntu\.com/ubuntu@//mirrors.tuna.tsinghua.edu.cn/ubuntu@g' ` + official,
+	}
+	if got := mutating(rec); !reflect.DeepEqual(got, want) {
+		t.Errorf("应只处理仍为官方源的 %s:\n%s\nwant:\n%s", official, strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+
+	// sed 之后两个文件都是镜像地址：不再有待办。
+	writeFile(t, official, tunaSources, 0o644)
+	if r := check(t, aptStep{}, x); r.State != Done {
+		t.Errorf("两个文件都换源后应收敛: %+v", r)
 	}
 }
 

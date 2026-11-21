@@ -34,6 +34,15 @@ func TestReal_DirAndEnv(t *testing.T) {
 	}
 }
 
+func TestReal_Unset(t *testing.T) {
+	t.Setenv("DSYNC_T_GONE", "stale")
+	t.Setenv("DSYNC_T_KEEP", "kept")
+	res, err := Real{}.Query(context.Background(), Cmd{Name: "sh", Args: []string{"-c", `echo "${DSYNC_T_GONE-unset}|$DSYNC_T_KEEP"`}, Unset: []string{"DSYNC_T_GONE"}})
+	if err != nil || strings.TrimSpace(string(res.Stdout)) != "unset|kept" {
+		t.Fatalf("%q %v", res.Stdout, err)
+	}
+}
+
 func TestDryRun_OnlyQueriesExecute(t *testing.T) {
 	var out bytes.Buffer
 	rec := (&Recording{}).OnStdout("git status", "clean")

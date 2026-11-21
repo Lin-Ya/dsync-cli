@@ -18,10 +18,13 @@ import (
 //
 // 允许的差异（白名单）：
 //   - PATH：v2 中 PATH 归还给用户 .zshenv 维护，不由 shell-init 输出；
-//   - DSYNC_GEO_SOURCE：v2 新增的会话标记。
+//   - DSYNC_GEO_SOURCE：v2 新增的会话标记；
+//   - MISE_NODE_MIRROR_URL → MISE_URL_REPLACEMENTS：node 镜像改经 url_replacements，
+//     避免镜像写进 mise.lock（见 internal/mirrors envVars 注释；取值由 TestGenerate_Eval 断言）。
 var parityIgnore = map[string]bool{
 	"PATH": true, "PWD": true, "OLDPWD": true, "SHLVL": true, "_": true,
-	"DSYNC_GEO_SOURCE": true,
+	"DSYNC_GEO_SOURCE":     true,
+	"MISE_NODE_MIRROR_URL": true, "MISE_URL_REPLACEMENTS": true,
 }
 
 func TestParityWithV1(t *testing.T) {

@@ -278,7 +278,7 @@ func TestSync_MiseInstallGetsGeoMirrors(t *testing.T) {
 	if err := tf.Env().Sync(context.Background()); err != nil {
 		t.Fatalf("%v\n%s", err, tf.out.String())
 	}
-	if env := tf.miseInstallEnv(t); !strings.Contains(env, "MISE_NODE_MIRROR_URL=https://npmmirror.com/mirrors/node/") {
+	if env := tf.miseInstallEnv(t); !strings.Contains(env, `MISE_URL_REPLACEMENTS={"https://nodejs.org/dist/":"https://npmmirror.com/mirrors/node/"}`) || strings.Contains(env, "MISE_NODE_MIRROR_URL") {
 		t.Errorf("cn 下 mise install 应带 node 镜像: %q", env)
 	}
 }

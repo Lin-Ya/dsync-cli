@@ -29,26 +29,27 @@ func (aptStep) Applicable(p platform.Platform) bool {
 
 // mirrorTargets 返回需要换成 TUNA 镜像的源文件。只认 Ubuntu 官方源地址，
 // 换过即不再匹配，保证收敛（geo=official 时不回退，与 v1 一致）。
+// 逐个文件判断：任一文件已换源不代表其余文件也换过（ubuntu.sources 与 sources.list 可能同时存在）。
 func (aptStep) mirrorTargets(x *Context) []string {
 	if x.Geo != mirrors.CN {
 		return nil
 	}
-	host, _ := mirrors.URL("apt", mirrors.CN)
 	var files []string
 	for _, rel := range aptSources {
 		b, err := os.ReadFile(x.path(rel))
 		if err != nil {
 			continue
 		}
-		s := string(b)
-		if strings.Contains(s, host) {
-			return nil
-		}
-		if strings.Contains(s, "//archive.ubuntu.com/ubuntu") || strings.Contains(s, "//security.ubuntu.com/ubuntu") {
+		if officialSources(string(b)) {
 			files = append(files, x.path(rel))
 		}
 	}
 	return files
+}
+
+// officialSources 表示内容里还有 Ubuntu 官方源地址（已换源的文件不再匹配）。
+func officialSources(s string) bool {
+	return strings.Contains(s, "//archive.ubuntu.com/ubuntu") || strings.Contains(s, "//security.ubuntu.com/ubuntu")
 }
 
 func (aptStep) missing(ctx context.Context, x *Context) []string {

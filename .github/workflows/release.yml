@@ -1,16 +1,24 @@
 name: Release
 
-# 推送 v2.* tag 时发布：先测试，再构建 5 个平台的 dsync 二进制并附带 checksums.txt。
+# 推送 v2.* tag 时发布：先复用 CI 的全部门禁（gofmt / vet / race / 覆盖率 / Windows /
+# shellcheck / 交叉编译 / 容器 E2E），全部通过后再构建 5 个平台的二进制并附带 checksums.txt。
+# 门禁只有一份定义，在 ci.yml；这里不重复命令，避免两套检查逐渐不一致。
+# workflow_dispatch 是干跑：同样跑门禁与构建，但不创建 Release（见最后一步的 if）。
 # 资产名 dsync_<os>_<arch>[.exe] 与 internal/release.AssetName、install.sh 约定一致。
 on:
   push:
     tags: ['v2.*']
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
   release:
+    needs: ci
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,11 +26,11 @@ jobs:
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
-      - name: 测试
-        run: go test -count=1 ./...
       - name: 构建
         run: bash scripts/build-release.sh "$GITHUB_REF_NAME" dist
       - name: 创建 Release
+        # 只有 tag 推送才发布；workflow_dispatch 到此为止（干跑验证门禁与构建）。
+        if: startsWith(github.ref, 'refs/tags/v2.')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

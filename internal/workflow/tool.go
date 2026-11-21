@@ -98,7 +98,15 @@ func (e Env) editTools(ctx context.Context, verb, action string, args []string, 
 	}
 
 	e.logf("[4/5] mise lock --global 并写回 %s", rel(repo.Root, lockSrc))
-	if err := e.mise().LockGlobal(ctx); err != nil {
+	geo, _, err := config.ResolveGeo(e.Getenv, c.Paths, c.Local)
+	if err != nil {
+		return err
+	}
+	m, err := e.miseFor(geo)
+	if err != nil {
+		return err
+	}
+	if err := m.LockGlobal(ctx); err != nil {
 		return err
 	}
 	if err := e.copyFile(filepath.Join(c.Paths.Home, ".config", "mise", "mise.lock"), lockSrc, 0o600); err != nil {

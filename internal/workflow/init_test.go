@@ -339,20 +339,27 @@ func TestInit_GitIdentity(t *testing.T) {
 // miseInstallEnv 返回最后一次 mise install 调用附带的环境变量。
 func (f *fixture) miseInstallEnv(t *testing.T) string {
 	t.Helper()
-	env, found := "", false
-	for _, c := range f.rec.Calls {
-		if c.Cmd.Name == "mise" && len(c.Cmd.Args) > 0 && c.Cmd.Args[0] == "install" {
-			env, found = strings.Join(c.Cmd.Env, " "), true
-		}
-	}
-	if !found {
-		t.Fatalf("未调用 mise install: %v", f.rec.Lines())
-	}
+	env, _ := f.miseEnv(t, "install")
 	return env
 }
 
-// 新设备首次 init 时 shell 里还没有 shell-init 导出的镜像变量；lockfile 记录了 node 的 mirror_url，
-// mise install --locked 必须带上当前 geo 的镜像变量才能匹配（否则报 "node@24 is not in the lockfile"）。
+// miseEnv 返回最后一次 mise <sub> 调用附带的 Env 与 Unset（空格连接）。
+func (f *fixture) miseEnv(t *testing.T, sub string) (env, unset string) {
+	t.Helper()
+	found := false
+	for _, c := range f.rec.Calls {
+		if c.Cmd.Name == "mise" && len(c.Cmd.Args) > 0 && c.Cmd.Args[0] == sub {
+			env, unset, found = strings.Join(c.Cmd.Env, " "), strings.Join(c.Cmd.Unset, " "), true
+		}
+	}
+	if !found {
+		t.Fatalf("未调用 mise %s: %v", sub, f.rec.Lines())
+	}
+	return env, unset
+}
+
+// 新设备首次 init 时 shell 里还没有 shell-init 导出的镜像变量：mise install 须自带当前 geo 的镜像。
+// node 镜像经 url_replacements（不进 lockfile），不得用 MISE_NODE_MIRROR_URL（会作为 mirror_url 写进 lockfile）。
 func TestInit_MiseInstallGetsGeoMirrors(t *testing.T) {
 	f := initFixture(t)
 	f.write(t, "dots/.chezmoi.toml.tmpl", "")
@@ -360,14 +367,22 @@ func TestInit_MiseInstallGetsGeoMirrors(t *testing.T) {
 	if err := f.Env().Init(context.Background(), InitOptions{Source: filepath.Join(f.home, "dots"), Geo: "cn"}); err != nil {
 		t.Fatal(err)
 	}
-	if env := f.miseInstallEnv(t); !strings.Contains(env, "MISE_NODE_MIRROR_URL=https://npmmirror.com/mirrors/node/") {
+	if env := f.miseInstallEnv(t); !strings.Contains(env, `MISE_URL_REPLACEMENTS={"https://nodejs.org/dist/":"https://npmmirror.com/mirrors/node/"}`) || strings.Contains(env, "MISE_NODE_MIRROR_URL") {
 		t.Errorf("cn 下 mise install 应带 node 镜像: %q", env)
+	}
+	// 旧 shell 中残留的 MISE_NODE_MIRROR_URL 必须从子进程环境中去掉（空值会让 mise 崩溃，只能 unset）
+	if _, unset := f.miseEnv(t, "install"); !strings.Contains(unset, "MISE_NODE_MIRROR_URL") {
+		t.Errorf("cn 下应去掉旧变量: unset = %q", unset)
 	}
 	f.rec.Calls = nil
 	if err := f.Env().Init(context.Background(), InitOptions{Geo: "official"}); err != nil {
 		t.Fatal(err)
 	}
-	if env := f.miseInstallEnv(t); strings.Contains(env, "MISE_NODE_MIRROR_URL") {
+	if env := f.miseInstallEnv(t); strings.Contains(env, "MISE_") {
 		t.Errorf("official 下 mise install 不应带镜像变量: %q", env)
+	}
+	// geo 刚切到 official 时，当前 shell 里可能还有 cn 的镜像变量
+	if _, unset := f.miseEnv(t, "install"); !strings.Contains(unset, "MISE_URL_REPLACEMENTS") || !strings.Contains(unset, "MISE_NODE_MIRROR_URL") {
+		t.Errorf("official 下应去掉继承的镜像变量: unset = %q", unset)
 	}
 }

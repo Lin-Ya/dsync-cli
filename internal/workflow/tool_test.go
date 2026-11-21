@@ -130,6 +130,10 @@ func TestToolAdd_A_DefaultCommitsWithoutPush(t *testing.T) {
 	if tf.called("git push") {
 		t.Error("默认不应推送")
 	}
+	// mise lock 不得把镜像写进 lockfile：node 镜像经 url_replacements，残留的 MISE_NODE_MIRROR_URL 被去掉
+	if env, unset := tf.miseEnv(t, "lock"); !strings.Contains(env, "MISE_URL_REPLACEMENTS=") || !strings.Contains(unset, "MISE_NODE_MIRROR_URL") {
+		t.Errorf("mise lock 环境: env=%q unset=%q", env, unset)
+	}
 }
 
 // 场景 B：--dry-run 不产生任何写操作。
