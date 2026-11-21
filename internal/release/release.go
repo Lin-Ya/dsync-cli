@@ -1,4 +1,4 @@
-// Package release 通过 GitHub API 读取 dsync 的 Release（仓库私有，需要 Token）。
+// Package release 通过 GitHub API 读取 dsync 的 Release（仓库已公开，Token 可选）。
 package release
 
 import (
@@ -22,7 +22,7 @@ const DefaultAPI = "https://api.github.com"
 // ChecksumsFile 是每个 Release 附带的校验文件名（由 release 工作流生成）。
 const ChecksumsFile = "checksums.txt"
 
-// Client 访问 GitHub Release API。
+// Client 访问 GitHub Release API。Token 为空时匿名请求（公开仓库可用，受未认证速率限制）。
 type Client struct {
 	HTTP  *http.Client
 	API   string
@@ -35,7 +35,7 @@ type Release struct {
 	Assets  []Asset `json:"assets"`
 }
 
-// Asset 是 Release 中的一个文件。url 为 API 地址，私有仓库须带 Token 下载。
+// Asset 是 Release 中的一个文件。url 为 API 地址，公开仓库可直接下载，带 Token 时同样可用。
 type Asset struct {
 	Name string `json:"name"`
 	URL  string `json:"url"`
@@ -56,7 +56,9 @@ func (c Client) request(ctx context.Context, url, accept string) (*http.Request,
 		return nil, err
 	}
 	req.Header.Set("Accept", accept)
-	req.Header.Set("Authorization", "Bearer "+c.Token)
+	if c.Token != "" { // 公开仓库无需认证；只有设置了 Token 才发送
+		req.Header.Set("Authorization", "Bearer "+c.Token)
+	}
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	return req, nil
 }
@@ -74,7 +76,7 @@ func (c Client) Get(ctx context.Context, tag string) (Release, error) {
 	}
 	body, err := deps.Fetch(c.HTTP, req, "")
 	if err != nil {
-		return Release{}, fmt.Errorf("%w（Token 无效或无仓库读权限？）", err)
+		return Release{}, fmt.Errorf("%w（网络受限、Token 无效，或触发匿名速率限制？设置 GITHUB_TOKEN 可提高限额）", err)
 	}
 	if tag != "" {
 		var r Release

@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -47,9 +48,10 @@ func platformAsset() string {
 
 type server struct {
 	*httptest.Server
-	binary  string // 实际提供的二进制内容（可被篡改）
-	pretty  bool
-	tokenOK string
+	binary    string // 实际提供的二进制内容（可被篡改）
+	pretty    bool
+	tokenOK   string
+	anonymous int32 // 不带 Authorization 的请求数，证明无 Token 时真的没发令牌
 }
 
 // newServer 先配置好全部字段再启动，处理请求的 goroutine 只读不写（-race 安全）。
@@ -63,7 +65,10 @@ func newServer(t *testing.T, pretty bool, binary string) *server {
 }
 
 func (s *server) handle(w http.ResponseWriter, r *http.Request) {
-	if r.Header.Get("Authorization") != "Bearer "+s.tokenOK {
+	// 公开仓库：匿名可读；带了错误的 Token 仍然 404（与真实 GitHub 的不透明 404 一致）
+	if auth := r.Header.Get("Authorization"); auth == "" {
+		atomic.AddInt32(&s.anonymous, 1)
+	} else if auth != "Bearer "+s.tokenOK {
 		http.Error(w, `{"message":"Not Found"}`, http.StatusNotFound)
 		return
 	}
@@ -176,9 +181,15 @@ func TestInstall_Failures(t *testing.T) {
 	}
 
 	srv = newServer(t, true, fakeDsync)
-	out, _, err = run(t, srv, map[string]string{"GITHUB_TOKEN": ""})
-	if err == nil || !strings.Contains(out, "需要 GitHub Token") {
-		t.Errorf("无 Token:\n%s", out)
+	out, bin, err = run(t, srv, map[string]string{"GITHUB_TOKEN": ""})
+	if err != nil || !strings.Contains(out, "已安装") {
+		t.Errorf("公开仓库无 Token 也应能安装:\n%s", out)
+	}
+	if atomic.LoadInt32(&srv.anonymous) == 0 {
+		t.Error("无 Token 时不应发送 Authorization 头")
+	}
+	if _, statErr := os.Stat(bin); statErr != nil {
+		t.Error("无 Token 时也应已安装")
 	}
 	out, _, err = run(t, srv, map[string]string{"GITHUB_TOKEN": "wrong"})
 	if err == nil || !strings.Contains(out, "Token 无效") {

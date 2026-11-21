@@ -25,7 +25,8 @@ func psServer(t *testing.T, genuine, served []byte) *httptest.Server {
 	sum := sha256.Sum256(genuine)
 	var srv *httptest.Server
 	srv = httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer tok" {
+		// 公开仓库：匿名可读；带了错误的 Token 仍然 404
+		if auth := r.Header.Get("Authorization"); auth != "" && auth != "Bearer tok" {
 			http.Error(w, `{"message":"Not Found"}`, http.StatusNotFound)
 			return
 		}

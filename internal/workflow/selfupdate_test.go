@@ -16,8 +16,9 @@ import (
 	"github.com/Lin-Ya/dsync-cli/internal/release"
 )
 
-// fakeRelease 启动一个模拟私有 Release API 的服务器，发布 tag 并附带本机架构的 linux 二进制
+// fakeRelease 启动一个模拟公开 Release API 的服务器，发布 tag 并附带本机架构的 linux 二进制
 // （fixture 固定 GOOS=linux；架构取实际值，macOS arm64 runner 上同样成立）。
+// 与真实公开仓库一致：不带 Authorization 也允许访问。
 func fakeRelease(t *testing.T, tag, binary string) *httptest.Server {
 	t.Helper()
 	return fakeReleaseAsset(t, tag, release.AssetName("linux", runtime.GOARCH), binary)
@@ -30,10 +31,7 @@ func fakeReleaseAsset(t *testing.T, tag, name, binary string) *httptest.Server {
 	// 先建未启动的服务器再赋值、启动：处理请求的 goroutine 读取 srv 时已无并发写（-race 安全）
 	var srv *httptest.Server
 	srv = httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer tok" {
-			http.NotFound(w, r)
-			return
-		}
+		// 公开仓库：匿名或带任意 Token 都可读；令牌错误不在这里模拟（真实 GitHub 会返回 401）
 		switch r.URL.Path {
 		case "/repos/" + release.Repo + "/releases":
 			json.NewEncoder(w).Encode([]release.Release{{TagName: tag, Assets: []release.Asset{
@@ -63,15 +61,15 @@ func TestSelfUpdate(t *testing.T) {
 	e.HTTP = srv.Client()
 	ctx := context.Background()
 
-	if err := e.SelfUpdate(ctx, "v2.0.0-alpha.1", SelfUpdateOptions{Target: target}); err == nil || !strings.Contains(err.Error(), "GITHUB_TOKEN") {
-		t.Fatalf("无 Token 应报错并提示: %v", err)
-	}
-	f.env["GITHUB_TOKEN"] = "tok"
 	if err := e.SelfUpdate(ctx, "v2.0.0-alpha.1", SelfUpdateOptions{Target: target}); err != nil {
-		t.Fatal(err)
+		t.Fatalf("公开仓库无 Token 也应能更新: %v", err)
 	}
 	if b, _ := os.ReadFile(target); string(b) != "new-binary" {
 		t.Errorf("应替换为新版本: %q", b)
+	}
+	f.env["GITHUB_TOKEN"] = "tok"
+	if err := e.SelfUpdate(ctx, "v2.0.0-alpha.1", SelfUpdateOptions{Target: target, Force: true}); err != nil {
+		t.Fatalf("带 Token 也应能更新: %v", err)
 	}
 	os.WriteFile(target, []byte("same"), 0o755)
 	if err := e.SelfUpdate(ctx, "v2.0.0-alpha.2", SelfUpdateOptions{Target: target}); err != nil {
@@ -98,15 +96,18 @@ func TestSelfUpdate(t *testing.T) {
 	}
 }
 
-func TestGithubToken_FallsBackToGh(t *testing.T) {
+func TestGithubToken_OptionalAndFallsBackToGh(t *testing.T) {
 	f := newFixture(t)
+	if tok := f.Env().githubToken(context.Background()); tok != "" {
+		t.Errorf("没有 Token 时应返回空串（匿名访问）: %q", tok)
+	}
 	f.tools("gh")
 	f.rec.OnStdout("gh auth token", "gho_abc\n")
-	if tok, err := f.Env().githubToken(context.Background()); err != nil || tok != "gho_abc" {
-		t.Errorf("%q %v", tok, err)
+	if tok := f.Env().githubToken(context.Background()); tok != "gho_abc" {
+		t.Errorf("%q", tok)
 	}
 	f.env["GITHUB_TOKEN"] = "env"
-	if tok, _ := f.Env().githubToken(context.Background()); tok != "env" {
+	if tok := f.Env().githubToken(context.Background()); tok != "env" {
 		t.Errorf("环境变量应优先: %q", tok)
 	}
 }
