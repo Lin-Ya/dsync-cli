@@ -1,10 +1,16 @@
 name: CI
 
+# 这些门禁同时被 release.yml 以可复用工作流的方式调用（发布前必须全部通过）。
 on:
   push:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  workflow_call:
+
+# 被 release.yml 调用时不继承其 contents: write，测试只需要读权限。
+permissions:
+  contents: read
 
 jobs:
   # ---------------------------------------------------------------------------
