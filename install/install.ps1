@@ -39,7 +39,9 @@ $Name = 'dsync_windows_amd64.exe'
 # Token 可选：公开仓库匿名也能下载；设置了就带上，提高 API 速率限制。
 $Token = $env:GITHUB_TOKEN
 if (-not $Token -and (Get-Command gh -ErrorAction SilentlyContinue)) {
-  $Token = (& gh auth token 2>$null | Out-String).Trim()
+  # gh 未登录（或已登出）时会往 stderr 写一行；$ErrorActionPreference = 'Stop' 下 PowerShell 5.1
+  # 会把它变成 NativeCommandError 并终止脚本，所以这里必须接住。
+  try { $Token = (& gh auth token 2>$null | Out-String).Trim() } catch { $Token = '' }
 }
 if ($env:PROCESSOR_ARCHITECTURE -ne 'AMD64') { Die "仅提供 windows/amd64 版本（当前 $env:PROCESSOR_ARCHITECTURE）" }
 
