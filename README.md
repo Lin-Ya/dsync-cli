@@ -20,13 +20,29 @@ v1（bash 脚本实现）冻结在 dotfiles 仓库的 tag `v1-final`。
 
 **本地手动测试**：见 [docs/testing-guide.md](docs/testing-guide.md)（新建 WSL 实例逐步验证）。
 
+## 安装
+
+公开仓库，匿名即可安装（设置了 `GITHUB_TOKEN` 或已登录 `gh` 时会自动带上，用于提高 GitHub API 限额）。
+
+```bash
+# Linux / macOS / WSL：安装到 ~/.local/bin/dsync（按 checksums.txt 校验 sha256）
+curl -fsSL https://raw.githubusercontent.com/Lin-Ya/dsync-cli/main/install/install.sh | sh
+
+# Windows（PowerShell；本脚本带 UTF-8 BOM，不要用 irm | iex）
+Invoke-RestMethod -OutFile "$env:TEMP\install-dsync.ps1" `
+  'https://raw.githubusercontent.com/Lin-Ya/dsync-cli/main/install/install.ps1'
+powershell -ExecutionPolicy Bypass -File "$env:TEMP\install-dsync.ps1"
+```
+
+在 `sh` 后加 `-s -- <仓库地址>` 可安装后直接执行 `dsync init <仓库地址>`。详见[使用指南第 2 节](docs/usage-guide.md#2-安装)。
+
 ## 命令
 
 ```bash
 # 首次部署 / 更新自身
 dsync init [<仓库地址> | --source <目录>] [--geo cn|official]   # 装 mise/chezmoi → 克隆 → apply → provision → mise install；可重复运行
 dsync init --create [--github <owner/name>]                     # 用内置 starter 模板新建 dotfiles 仓库（v2 布局）
-dsync self-update [--version <tag>] [--force]                   # 从私有 Release 更新（需 GITHUB_TOKEN 或 gh auth）
+dsync self-update [--version <tag>] [--force]                   # 从公开 Release 更新（匿名即可；受限时用 GITHUB_TOKEN 或 gh auth）
 
 # Windows 宿主（管理员 PowerShell；取代 v1 bootstrap.ps1）
 dsync host setup [<仓库地址> | --source <Windows 目录>] [--wsl-install-dir D:\Linux] [--proxy 'http://${WSL_HOST_IP}:7890'] [--check]
@@ -82,7 +98,7 @@ internal/{chezmoi,mise,gitrepo}  子进程包装器
 internal/shellinit   shell 脚本生成
 internal/provision   系统级步骤（Step：Check → Apply；无 dsync.toml 时用与 v1 一致的默认清单）
 internal/deps        mise / chezmoi 固定版本与 sha256（versions.go 由 scripts/update-deps.sh 生成）；下载、校验、原子安装
-internal/release     GitHub Release API 客户端（私有仓库，带 Token）
+internal/release     GitHub Release API 客户端（公开仓库匿名访问，可选 Token）
 internal/host        Windows 宿主步骤（经 wsl.exe / winget / powershell.exe 子进程，无 build tag，Linux 上可完整测试）
 internal/starter     内嵌的 v2 dotfiles 模板仓库（init --create；也是 v2 布局的测试 fixture）
 install/install.sh   POSIX sh 安装脚本：下载 Release 二进制 → 校验 → dsync init
@@ -117,7 +133,7 @@ go build -o dsync ./cmd/dsync
 
 ## 发布
 
-仓库私有，Release 资产需 Token 下载（`install.sh` / `self-update` 读取 `GITHUB_TOKEN`，或已登录的 `gh`）。
+Release 资产公开下载（`install.sh` / `self-update` 匿名即可；设置 `GITHUB_TOKEN` 可提高 GitHub API 速率限制）。
 
 ```bash
 git tag v2.0.0-alpha.1 && git push origin v2.0.0-alpha.1   # 触发 .github/workflows/release.yml
@@ -137,3 +153,7 @@ git tag v2.0.0-alpha.1 && git push origin v2.0.0-alpha.1   # 触发 .github/work
 - `host setup` 的 Docker Desktop 集成：v1 修改的键 `Integration<发行版>` 实际并不存在（自动勾选从未生效），改为真实的 `WslEngineEnabled` / `IntegratedWslDistros`，首次修改前备份为 `.bak.dsync`
 - `host setup` 调用 `wsl.exe --exec`：实测从 Go 程序用 `--` 传参时，参数会被拼成一行交给默认 shell 再解析，破坏 `'\''` 引号转义
 - WSL 迁移：确认导出的备份文件存在才 unregister，失败时发行版保持原状
+
+## 许可
+
+[MIT](LICENSE)

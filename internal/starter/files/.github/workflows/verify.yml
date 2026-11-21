@@ -1,7 +1,7 @@
 name: verify
 
 # 渲染全部模板（linux / darwin × cn / official）并校验 dsync.toml。
-# dsync-cli 是私有仓库：需在本仓库 Settings → Secrets 中添加 DSYNC_CLI_TOKEN（对 Lin-Ya/dsync-cli 有 Contents 读权限）。
+# dsync-cli 是公开仓库，安装 dsync 不需要任何 secret。
 on: [push, pull_request, workflow_dispatch]
 
 jobs:
@@ -10,17 +10,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: 安装 dsync
-        env:
-          GITHUB_TOKEN: ${{ secrets.DSYNC_CLI_TOKEN }}
         run: |
           set -euo pipefail
-          if [ -z "$GITHUB_TOKEN" ]; then
-            echo "::error::缺少 secret DSYNC_CLI_TOKEN（Settings → Secrets → Actions；需对 Lin-Ya/dsync-cli 有 Contents 读权限）"
-            exit 1
-          fi
           # 先下载再执行（不用 curl | sh：管道中 curl 失败会被吞掉，后续步骤才报 dsync: command not found）
-          curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github.raw" \
-            -o "$RUNNER_TEMP/install-dsync.sh" "https://api.github.com/repos/Lin-Ya/dsync-cli/contents/install/install.sh"
+          curl -fsSL -o "$RUNNER_TEMP/install-dsync.sh" \
+            https://raw.githubusercontent.com/Lin-Ya/dsync-cli/main/install/install.sh
           sh "$RUNNER_TEMP/install-dsync.sh"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: 安装 chezmoi

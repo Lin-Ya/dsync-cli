@@ -64,21 +64,19 @@ WIN=/mnt/c/Users/<Windows用户名>/dsync-test
 
 ## 2. 安装 dsync
 
-**方式 A：install.sh（私有仓库，需要 Token）**
+**方式 A：install.sh（公开仓库，匿名即可）**
 
-1. 在 GitHub 创建 fine-grained token：Settings → Developer settings → Fine-grained tokens。仓库选 `Lin-Ya/dsync-cli`（下载 dsync）和 `Lin-Ya/dsync`（克隆 dotfiles），权限 Contents: Read-only。
-2. 安装：
+1. 安装：
 
    ```bash
-   export GITHUB_TOKEN=<token>
-   curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github.raw" \
-     "https://api.github.com/repos/Lin-Ya/dsync-cli/contents/install/install.sh" | sh
+   curl -fsSL https://raw.githubusercontent.com/Lin-Ya/dsync-cli/main/install/install.sh | sh
    export PATH="$HOME/.local/bin:$PATH"
    ```
 
    - 期望输出：`dsync v2.0.0-alpha.1 已安装到 ~/.local/bin/dsync`。
    - 脚本会按 Release 中的 `checksums.txt` 校验 sha256，不符即拒绝安装。
    - 在 `sh` 后加 `-s -- <仓库地址>`，会在安装后直接执行 `dsync init <仓库地址>`。
+   - 遇到 GitHub API 速率限制时再 `export GITHUB_TOKEN=<token>` 重跑（可选）。你的 dotfiles 仓库若为私有，克隆时仍需凭据。
 
 **方式 B：拷贝本地编译的二进制**
 
@@ -198,10 +196,8 @@ exec zsh
 - **方式 A：install.ps1**（需已发布 Release）：
 
   ```powershell
-  $env:GITHUB_TOKEN = '<token>'
-  $h = @{ Authorization = "Bearer $env:GITHUB_TOKEN"; Accept = 'application/vnd.github.raw' }
-  Invoke-RestMethod -Headers $h -OutFile "$env:TEMP\install-dsync.ps1" `
-    'https://api.github.com/repos/Lin-Ya/dsync-cli/contents/install/install.ps1'
+  Invoke-RestMethod -OutFile "$env:TEMP\install-dsync.ps1" `
+    'https://raw.githubusercontent.com/Lin-Ya/dsync-cli/main/install/install.ps1'
   powershell -ExecutionPolicy Bypass -File "$env:TEMP\install-dsync.ps1"
   ```
 
