@@ -141,6 +141,19 @@ func TestInstallPS1_NoArgsAndPinnedVersion(t *testing.T) {
 	}
 }
 
+// 公开仓库：没有 Token 也应能安装（不发送 Authorization 头）。
+func TestInstallPS1_NoTokenNeeded(t *testing.T) {
+	requirePS(t)
+	srv := psServer(t, []byte("binary"), []byte("binary"))
+	out, bin, err := runPS(t, srv, map[string]string{"GITHUB_TOKEN": ""})
+	if err != nil {
+		t.Fatalf("无 Token 应能安装:\n%s", out)
+	}
+	if b, _ := os.ReadFile(bin); string(b) != "binary" {
+		t.Error("无 Token 时应已安装")
+	}
+}
+
 // 断言只用 ASCII 信息（退出码 / sha256 / HTTP 状态码 / 文件是否存在）：PowerShell 写管道时
 // 使用控制台代码页（中文系统为 GBK，英文 CI runner 上中文会变成 ?），中文提示无法可靠比对。
 func TestInstallPS1_Failures(t *testing.T) {
